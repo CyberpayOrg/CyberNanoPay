@@ -1,4 +1,4 @@
-# CyberNanoPay — Gas-Free Nanopayment Infrastructure for AI Agents on TON
+# NanoPay — Gas-Free Nanopayment Infrastructure for AI Agents on TON
 
 Sub-cent USDT micropayments for AI agents. Zero gas per payment. x402-compatible. TEE-secured. Telegram-native.
 
