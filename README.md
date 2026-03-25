@@ -4,7 +4,7 @@ Sub-cent USDT micropayments for AI agents. Zero gas per payment. x402-compatible
 
 ## Demo
 
-<video src="docs/demo-video.mp4" controls width="100%"></video>
+https://github.com/CyberpayOrg/NanoPay/raw/main/docs/demo-video.mp4
 
 > 📺 [Live Demo](https://nano.cyberpay.org) · [Pitch Deck](https://nano-deck.cyberpay.org)
 
