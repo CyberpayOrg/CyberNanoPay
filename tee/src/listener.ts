@@ -38,6 +38,9 @@ export class ChainListener {
   /** base64-encoded transaction hash (as expected by @ton/ton HttpApi) */
   private lastHash: string | undefined;
   private gatewayAddr: Address;
+  /** Exponential backoff state for rate limiting */
+  private rateLimitBackoffMs = 0;
+  private rateLimitUntil = 0;
 
   constructor(config: ListenerConfig) {
     this.config = config;
@@ -107,6 +110,9 @@ export class ChainListener {
   }
 
   private async _poll(): Promise<void> {
+    // Skip poll if we're in rate-limit backoff window
+    if (Date.now() < this.rateLimitUntil) return;
+
     try {
       // Fetch transactions after our cursor
       // Only pass hash if we have one — @ton/ton HttpApi expects base64
@@ -121,6 +127,9 @@ export class ChainListener {
 
       if (txs.length === 0) return;
 
+      // Successful poll — reset rate limit backoff
+      this.rateLimitBackoffMs = 0;
+
       // Process oldest first
       const sorted = txs.reverse();
 
@@ -130,9 +139,19 @@ export class ChainListener {
         this.lastHash = tx.hash().toString("base64");
       }
     } catch (err: any) {
-      // Log concise error message, not the full AxiosError object
+      const status = err?.response?.status ?? err?.status;
       const msg = err?.response?.data?.error ?? err?.message ?? String(err);
-      console.error(`[listener] Poll error: ${msg}`);
+      if (status === 429) {
+        // Exponential backoff: 10s → 20s → 40s → 80s (max)
+        this.rateLimitBackoffMs = this.rateLimitBackoffMs
+          ? Math.min(this.rateLimitBackoffMs * 2, 80_000)
+          : 10_000;
+        this.rateLimitUntil = Date.now() + this.rateLimitBackoffMs;
+        console.warn(`[listener] Rate limited — backing off ${this.rateLimitBackoffMs / 1000}s`);
+      } else {
+        this.rateLimitBackoffMs = 0; // reset on non-429 errors
+        console.error(`[listener] Poll error: ${msg}`);
+      }
     }
   }
 
