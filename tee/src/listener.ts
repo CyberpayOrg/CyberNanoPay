@@ -137,7 +137,9 @@ export class ChainListener {
   }
 
   private _processTransaction(tx: any): void {
-    // Tact emits events as external out messages
+    // Tact emit() sends external out messages.
+    // Event data is directly in msg.body with NO opcode prefix and NO ref wrapping.
+    // TLB format: `_ field1 field2 ... = EventName`
     if (!tx.outMessages) return;
 
     for (const [, msg] of tx.outMessages) {
@@ -153,37 +155,29 @@ export class ChainListener {
   }
 
   private _parseEvent(body: Cell): void {
-    const slice = body.beginParse();
+    // Tact events have NO opcode prefix. Data is directly in the cell.
+    // We identify by field structure and bit count.
 
-    // Tact events: first 32 bits are the struct hash (opcode)
-    slice.loadUint(32); // skip opcode
+    const bits = body.beginParse().remainingBits;
 
-    // Try to parse based on known event structures
-    // We identify events by their field structure since Tact opcodes
-    // are generated from struct names
+    // BatchSettleEvent: uint64 + uint16 + coins + uint256 ≈ 338+ bits
+    if (bits > 335) {
+      try {
+        const s = body.beginParse();
+        if (this._tryParseBatchSettle(s)) return;
+      } catch {}
+    }
 
-    try {
-      // DepositEvent: depositor(Address) + amount(coins) + new_balance(coins)
-      // WithdrawCompletedEvent: depositor(Address) + amount(coins)
-      // BatchSettleEvent: batch_id(uint64) + count(uint16) + total_amount(coins) + batch_data_hash(uint256)
-
-      // Clone slice for each attempt
-      const s = body.beginParse();
-      s.loadUint(32); // skip opcode
-
-      // Try BatchSettleEvent first (starts with uint64)
-      if (this._tryParseBatchSettle(s)) return;
-    } catch {}
-
+    // DepositEvent: address(267) + coins + coins ≈ 275-400+ bits
+    // WithdrawCompletedEvent: address(267) + coins ≈ 271-390 bits
+    // Try deposit first (3 fields), then withdraw (2 fields)
     try {
       const s = body.beginParse();
-      s.loadUint(32);
       if (this._tryParseDeposit(s)) return;
     } catch {}
 
     try {
       const s = body.beginParse();
-      s.loadUint(32);
       if (this._tryParseWithdraw(s)) return;
     } catch {}
   }

@@ -15,8 +15,9 @@
 import nacl from "tweetnacl";
 import { Address } from "@ton/core";
 
-const TEE_URL = "http://localhost:4030";
-const GATEWAY_URL = "http://localhost:4031";
+const TEE_URL = process.env.TEE_URL ?? "http://localhost:4030";
+const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4031";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
 
 // Helper to generate a test TON address from a keypair
 function keypairToAddress(publicKey: Buffer): string {
@@ -45,7 +46,7 @@ async function main() {
   console.log("\n1. Registering buyer public key...");
   let res = await fetch(`${TEE_URL}/register-key`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(ADMIN_TOKEN ? { Authorization: `Bearer ${ADMIN_TOKEN}` } : {}) },
     body: JSON.stringify({
       address: buyerAddress,
       publicKey: Buffer.from(buyerKp.publicKey).toString("hex"),
@@ -58,7 +59,7 @@ async function main() {
   console.log("\n2. Simulating deposit of 10,000,000 units (= $10 USDT)...");
   res = await fetch(`${TEE_URL}/simulate-deposit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(ADMIN_TOKEN ? { Authorization: `Bearer ${ADMIN_TOKEN}` } : {}) },
     body: JSON.stringify({
       address: buyerAddress,
       amount: "10000000",

@@ -559,7 +559,8 @@
 
 <script type="module">
 
-const TEE_URL = 'https://af1c105306ec350be2965d98f181d48c305501ac-4030.dstack-pha-prod5.phala.network';
+const TEE_URL = 'https://3c84244ec8585d9d81678e9f8933c2b63bbfe5cd-4030.dstack-pha-prod5.phala.network';
+const ADMIN_TOKEN = '7834a8acd52587b1d54aa4dab4048cbd43fd0395ed2ad0513c7fea440cf4670d';
 
 // ── Helpers ──
 
@@ -742,7 +743,7 @@ async function runDemo() {
     log('Registering buyer public key with TEE...');
     const regRes = await fetch(`${TEE_URL}/register-key`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
       body: JSON.stringify({ address: buyerAddr, publicKey: buyerPubHex }),
     });
     const regData = await regRes.json();
@@ -757,7 +758,7 @@ async function runDemo() {
 
     const depRes = await fetch(`${TEE_URL}/simulate-deposit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
       body: JSON.stringify({ address: buyerAddr, amount: depositAmount }),
     });
     const depData = await depRes.json();

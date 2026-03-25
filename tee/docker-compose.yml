@@ -2,11 +2,12 @@
 # Deploy via: phala deploy -c docker-compose.yml
 services:
   tee:
-    image: 0xll/cyber-nano-pay-tee:v0.3.3
+    image: 0xll/cyber-nano-pay-tee:v0.3.5
     ports:
       - "4030:4030"
     volumes:
-      - tee-data-v2:/app/data
+      - tee-data:/app/data
+      - /var/run/dstack.sock:/var/run/dstack.sock
     environment:
       - PORT=4030
       - TON_RPC=${TON_RPC:-https://testnet.toncenter.com/api/v2/jsonRPC}
@@ -18,4 +19,4 @@ services:
       - DB_PATH=/app/data/gateway.db
 
 volumes:
-  tee-data-v2:
+  tee-data:

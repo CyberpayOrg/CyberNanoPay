@@ -15,7 +15,7 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const CVM_BASE = "https://af1c105306ec350be2965d98f181d48c305501ac-4030.dstack-pha-prod5.phala.network";
+const CVM_BASE = "https://3c84244ec8585d9d81678e9f8933c2b63bbfe5cd-4030.dstack-pha-prod5.phala.network";
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
