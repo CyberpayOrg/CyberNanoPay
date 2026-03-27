@@ -70,11 +70,14 @@ test       →  可依赖 sdk；通过 HTTP 调用 tee/gateway
 ## Definition of Done
 
 一个任务完成的标准：
-1. `cd contracts && npm test` 全部通过
-2. 所有修改过的包 `tsc --noEmit` 通过
-3. 没有引入违反包间依赖方向的 import
-4. 金额相关代码使用 bigint
-5. 没有硬编码的密钥或助记词
+1. `bash scripts/lint-security.sh` 全部通过（安全硬约束）
+2. `cd contracts && npm test` 全部通过
+3. 所有修改过的包 `tsc --noEmit` 通过
+4. 没有引入违反包间依赖方向的 import
+5. 金额相关代码使用 bigint
+6. 没有硬编码的密钥或助记词
+
+完整验证: `bash scripts/verify.sh`
 
 ## When Blocked
 

@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx:*)",
+      "Bash(bash scripts/verify.sh)",
+      "Bash(bash scripts/lint-security.sh)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(*WALLET_MNEMONIC*)",
+      "Bash(*TEE_SEED*)",
+      "Bash(*PRIVATE_KEY*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/ly/workspace/cyber/cyber-nano-pay && bash scripts/lint-security.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/ly/workspace/cyber/cyber-nano-pay && bash scripts/lint-security.sh && cd contracts && npm test --silent 2>&1 | tail -5"
+          }
+        ]
+      }
+    ]
+  }
+}

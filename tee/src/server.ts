@@ -24,6 +24,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import nacl from "tweetnacl";
+import { Address } from "@ton/core";
 import { Aggregator, type AggregatorConfig } from "./aggregator";
 import { Store } from "./store";
 import { ChainListener } from "./listener";
@@ -67,6 +68,28 @@ function adminGuard(c: any): Response | null {
   }
   return null;
 }
+
+// ── Input validation helpers ──
+
+/** Validates a TON address string. Returns an error message, or null if valid. */
+function validateTonAddress(addr: unknown): string | null {
+  if (typeof addr !== "string" || !addr.trim()) return "must be a non-empty string";
+  try {
+    Address.parse(addr);
+    return null;
+  } catch {
+    return `invalid TON address: "${addr}"`;
+  }
+}
+
+/** Parses an integer query param safely; returns def if missing/invalid; caps at max. */
+function parseSafeLimit(raw: string | undefined, def = 50, max = 1000): number {
+  const n = parseInt(raw ?? String(def), 10);
+  if (!Number.isFinite(n) || n < 1) return def;
+  return Math.min(n, max);
+}
+
+const HEX_128_RE = /^[0-9a-fA-F]{128}$/;
 
 const knownPublicKeys = new Map<string, string>();
 
@@ -177,8 +200,65 @@ async function main() {
   }));
 
   app.post("/verify", async (c) => {
-    const body = await c.req.json<PaymentAuthorization>();
-    const auth: PaymentAuthorization = { ...body, amount: BigInt(body.amount) };
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ success: false, error: "invalid JSON body" }, 400);
+    }
+
+    // Required field presence
+    for (const field of ["from", "to", "amount", "validBefore", "nonce", "signature"] as const) {
+      if (body[field] === undefined || body[field] === null) {
+        return c.json({ success: false, error: `missing required field: ${field}` }, 400);
+      }
+    }
+
+    // TON address validation
+    const fromErr = validateTonAddress(body.from);
+    if (fromErr) return c.json({ success: false, error: `'from' ${fromErr}` }, 400);
+    const toErr = validateTonAddress(body.to);
+    if (toErr) return c.json({ success: false, error: `'to' ${toErr}` }, 400);
+
+    // Amount: must be a valid bigint > 0
+    let amount: bigint;
+    try {
+      amount = BigInt(body.amount as string | number);
+    } catch {
+      return c.json({ success: false, error: "amount must be a valid integer string" }, 400);
+    }
+    if (amount <= 0n) {
+      return c.json({ success: false, error: "amount must be > 0" }, 400);
+    }
+
+    // validBefore: integer Unix timestamp in the future
+    const validBefore = Number(body.validBefore);
+    if (!Number.isFinite(validBefore) || !Number.isInteger(validBefore)) {
+      return c.json({ success: false, error: "validBefore must be an integer Unix timestamp" }, 400);
+    }
+    if (validBefore <= Math.floor(Date.now() / 1000)) {
+      return c.json({ success: false, error: "validBefore must be in the future" }, 400);
+    }
+
+    // nonce: 64 hex chars (32 bytes)
+    if (typeof body.nonce !== "string" || !/^[0-9a-fA-F]{64}$/.test(body.nonce)) {
+      return c.json({ success: false, error: "nonce must be a 64-character hex string (32 bytes)" }, 400);
+    }
+
+    // signature: 128 hex chars (64-byte Ed25519 signature)
+    if (typeof body.signature !== "string" || !HEX_128_RE.test(body.signature)) {
+      return c.json({ success: false, error: "signature must be a 128-character hex string (64 bytes)" }, 400);
+    }
+
+    const auth: PaymentAuthorization = {
+      from: body.from as string,
+      to: body.to as string,
+      amount,
+      validBefore,
+      nonce: body.nonce,
+      signature: body.signature,
+    };
+
     const result = await aggregator.verifyAndDeduct(auth);
     if (result.success && result.confirmationId) {
       store.logPayment(result.confirmationId, auth.from, auth.to, auth.amount, auth.nonce);
@@ -192,6 +272,8 @@ async function main() {
 
   app.get("/balance/:address", (c) => {
     const address = c.req.param("address");
+    const addrErr = validateTonAddress(address);
+    if (addrErr) return c.json({ error: `invalid address: ${addrErr}` }, 400);
     const snapshot = aggregator.getSnapshot(address);
     const policy = aggregator.getPolicy(address);
     const dailySpent = aggregator.getDailySpent(address);
@@ -228,21 +310,40 @@ async function main() {
   app.post("/policy", async (c) => {
     const denied = adminGuard(c);
     if (denied) return denied;
-    const body = await c.req.json<{
-      address: string; spendingLimit: string; dailyCap: string; hitlThreshold: string;
-    }>();
-    const policy: SpendingPolicy = {
-      spendingLimit: BigInt(body.spendingLimit),
-      dailyCap: BigInt(body.dailyCap),
-      hitlThreshold: BigInt(body.hitlThreshold),
-    };
-    aggregator.setPolicy(body.address, policy);
-    store.savePolicy(body.address, policy.spendingLimit, policy.dailyCap, policy.hitlThreshold);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const addrErr = validateTonAddress(body.address);
+    if (addrErr) return c.json({ error: `'address' ${addrErr}` }, 400);
+    for (const field of ["spendingLimit", "dailyCap", "hitlThreshold"] as const) {
+      if (body[field] === undefined || body[field] === null) {
+        return c.json({ error: `missing required field: ${field}` }, 400);
+      }
+    }
+    let spendingLimit: bigint, dailyCap: bigint, hitlThreshold: bigint;
+    try {
+      spendingLimit = BigInt(body.spendingLimit as string);
+      dailyCap = BigInt(body.dailyCap as string);
+      hitlThreshold = BigInt(body.hitlThreshold as string);
+    } catch {
+      return c.json({ error: "spendingLimit, dailyCap, hitlThreshold must be valid integer strings" }, 400);
+    }
+    if (spendingLimit < 0n || dailyCap < 0n || hitlThreshold < 0n) {
+      return c.json({ error: "policy values must be >= 0" }, 400);
+    }
+    const policy: SpendingPolicy = { spendingLimit, dailyCap, hitlThreshold };
+    aggregator.setPolicy(body.address as string, policy);
+    store.savePolicy(body.address as string, policy.spendingLimit, policy.dailyCap, policy.hitlThreshold);
     return c.json({ success: true });
   });
 
   app.get("/policy/:address", (c) => {
     const address = c.req.param("address");
+    const addrErr = validateTonAddress(address);
+    if (addrErr) return c.json({ error: `invalid address: ${addrErr}` }, 400);
     const policy = aggregator.getPolicy(address);
     if (!policy) return c.json({ policy: null });
     return c.json({
@@ -274,6 +375,9 @@ async function main() {
     const denied = adminGuard(c);
     if (denied) return denied;
     const id = c.req.param("id");
+    if (!/^[0-9a-fA-F]{1,64}$/.test(id)) {
+      return c.json({ error: "invalid payment ID format" }, 400);
+    }
     const result = await aggregator.approvePayment(id);
     if (result.success) store.updateApproval(id, "approved", "api");
     return c.json(result, result.success ? 200 : 400);
@@ -283,6 +387,9 @@ async function main() {
     const denied = adminGuard(c);
     if (denied) return denied;
     const id = c.req.param("id");
+    if (!/^[0-9a-fA-F]{1,64}$/.test(id)) {
+      return c.json({ error: "invalid payment ID format" }, 400);
+    }
     const result = aggregator.rejectPayment(id);
     if (result.success) store.updateApproval(id, "rejected", "api");
     return c.json(result, result.success ? 200 : 400);
@@ -293,17 +400,42 @@ async function main() {
   app.post("/register-key", async (c) => {
     const denied = adminGuard(c);
     if (denied) return denied;
-    const { address, publicKey } = await c.req.json<{ address: string; publicKey: string }>();
-    knownPublicKeys.set(address, publicKey);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const addrErr = validateTonAddress(body.address);
+    if (addrErr) return c.json({ error: `'address' ${addrErr}` }, 400);
+    if (typeof body.publicKey !== "string" || !/^[0-9a-fA-F]{64}$/.test(body.publicKey)) {
+      return c.json({ error: "publicKey must be a 64-character hex string (32-byte Ed25519 public key)" }, 400);
+    }
+    knownPublicKeys.set(body.address as string, body.publicKey);
     return c.json({ success: true });
   });
 
   app.post("/simulate-deposit", async (c) => {
     const denied = adminGuard(c);
     if (denied) return denied;
-    const { address, amount } = await c.req.json<{ address: string; amount: string }>();
-    aggregator.recordDeposit(address, BigInt(amount));
-    store.logDeposit(address, BigInt(amount));
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const addrErr = validateTonAddress(body.address);
+    if (addrErr) return c.json({ error: `'address' ${addrErr}` }, 400);
+    let amount: bigint;
+    try {
+      amount = BigInt(body.amount as string);
+    } catch {
+      return c.json({ error: "amount must be a valid integer string" }, 400);
+    }
+    if (amount <= 0n) return c.json({ error: "amount must be > 0" }, 400);
+    const address = body.address as string;
+    aggregator.recordDeposit(address, amount);
+    store.logDeposit(address, amount);
     return c.json({ success: true, balance: aggregator.getBalance(address).toString() });
   });
 
@@ -330,6 +462,15 @@ async function main() {
 
     const { depositor, amount } = await c.req.json<{ depositor: string; amount: string }>();
     if (!depositor || !amount) return c.json({ error: "depositor and amount required" }, 400);
+    const depositorAddrErr = validateTonAddress(depositor);
+    if (depositorAddrErr) return c.json({ error: `'depositor' ${depositorAddrErr}` }, 400);
+    let depositAmount: bigint;
+    try {
+      depositAmount = BigInt(amount);
+    } catch {
+      return c.json({ error: "amount must be a valid integer string" }, 400);
+    }
+    if (depositAmount <= 0n) return c.json({ error: "amount must be > 0" }, 400);
 
     try {
       const { mnemonicToPrivateKey } = await import("@ton/crypto");
@@ -351,7 +492,7 @@ async function main() {
       const body = beginCell()
         .storeUint(0x7362d09c, 32)
         .storeUint(0, 64)
-        .storeCoins(BigInt(amount))
+        .storeCoins(depositAmount)
         .storeAddress(depositorAddr)
         .storeUint(0, 1)
         .endCell();
@@ -401,7 +542,15 @@ async function main() {
   const lastFlushRequest = new Map<string, number>();
 
   app.post("/flush-for-withdraw", async (c) => {
-    const { address } = await c.req.json<{ address: string }>();
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const addrErr = validateTonAddress(body.address);
+    if (addrErr) return c.json({ error: `'address' ${addrErr}` }, 400);
+    const address = body.address as string;
     const balance = aggregator.getBalance(address);
     if (balance <= 0n) return c.json({ error: "No balance to withdraw" }, 403);
 
@@ -425,23 +574,27 @@ async function main() {
 
   app.get("/history/payments/:address", (c) => {
     const address = c.req.param("address");
-    const limit = parseInt(c.req.query("limit") ?? "50");
+    const addrErr = validateTonAddress(address);
+    if (addrErr) return c.json({ error: `invalid address: ${addrErr}` }, 400);
+    const limit = parseSafeLimit(c.req.query("limit"));
     return c.json({ payments: store.getPayments(address, limit) });
   });
 
   app.get("/history/payments", (c) => {
-    const limit = parseInt(c.req.query("limit") ?? "50");
+    const limit = parseSafeLimit(c.req.query("limit"));
     return c.json({ payments: store.getRecentPayments(limit) });
   });
 
   app.get("/history/approvals", (c) => {
-    const limit = parseInt(c.req.query("limit") ?? "50");
+    const limit = parseSafeLimit(c.req.query("limit"));
     return c.json({ approvals: store.getApprovalHistory(limit) });
   });
 
   app.get("/history/deposits/:address", (c) => {
     const address = c.req.param("address");
-    const limit = parseInt(c.req.query("limit") ?? "50");
+    const addrErr = validateTonAddress(address);
+    if (addrErr) return c.json({ error: `invalid address: ${addrErr}` }, 400);
+    const limit = parseSafeLimit(c.req.query("limit"));
     return c.json({ deposits: store.getDepositHistory(address, limit) });
   });
 
@@ -449,6 +602,9 @@ async function main() {
 
   app.get("/receipt/:id", (c) => {
     const id = c.req.param("id");
+    if (!/^[0-9a-fA-F]{1,64}$/.test(id)) {
+      return c.json({ error: "invalid receipt ID format" }, 400);
+    }
     const receipt = aggregator.getReceipt(id);
     if (!receipt) return c.json({ error: "Receipt not found" }, 404);
     return c.json(receipt);
@@ -456,15 +612,33 @@ async function main() {
 
   app.get("/receipts/:address", (c) => {
     const address = c.req.param("address");
-    const role = (c.req.query("role") ?? "both") as "from" | "to" | "both";
-    const limit = parseInt(c.req.query("limit") ?? "50");
+    const addrErr = validateTonAddress(address);
+    if (addrErr) return c.json({ error: `invalid address: ${addrErr}` }, 400);
+    const rawRole = c.req.query("role") ?? "both";
+    if (!["from", "to", "both"].includes(rawRole)) {
+      return c.json({ error: "role must be 'from', 'to', or 'both'" }, 400);
+    }
+    const role = rawRole as "from" | "to" | "both";
+    const limit = parseSafeLimit(c.req.query("limit"));
     return c.json({ receipts: aggregator.getReceipts(address, role, limit) });
   });
 
   app.post("/receipt/verify", async (c) => {
-    const receipt = await c.req.json<import("./receipt").StandardReceipt>();
+    let receipt: unknown;
+    try {
+      receipt = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    if (typeof receipt !== "object" || receipt === null || Array.isArray(receipt)) {
+      return c.json({ error: "receipt must be a JSON object" }, 400);
+    }
+    const r = receipt as Record<string, unknown>;
+    if (!r.signature || !r.payload) {
+      return c.json({ error: "receipt must have 'signature' and 'payload' fields" }, 400);
+    }
     const { verifyStandardReceipt } = await import("./receipt");
-    const result = verifyStandardReceipt(receipt, teePubkeyHex);
+    const result = verifyStandardReceipt(receipt as import("./receipt").StandardReceipt, teePubkeyHex);
     return c.json({ ...result, teePubkey: teePubkeyHex });
   });
 

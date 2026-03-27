@@ -8,10 +8,11 @@
  * 4. TEE deducts balance + adds to batch
  * 5. Batch settles (simulated)
  *
- * Run: npx tsx test/e2e.ts
+ * Run: cp .env.example .env && edit .env, then: npx tsx e2e.ts
  * Requires: TEE server running on localhost:4030
  */
 
+import "dotenv/config";
 import nacl from "tweetnacl";
 import { Address } from "@ton/core";
 

@@ -11,6 +11,12 @@ ERRORS=0
 
 echo "=== CyberNanoPay Verify ==="
 
+# 0. 安全硬约束
+echo "[0/3] security lint..."
+if ! bash "$ROOT/scripts/lint-security.sh" 2>&1; then
+  ERRORS=$((ERRORS + 1))
+fi
+
 # 1. 合约测试
 echo "[1/3] contracts: jest..."
 cd "$ROOT/contracts"

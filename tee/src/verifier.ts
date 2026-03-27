@@ -22,10 +22,41 @@ import type { PaymentAuthorization } from "./types";
 
 const MESSAGE_PREFIX = Buffer.from("CyberGateway:v1:");
 
+const HEX_64_RE = /^[0-9a-fA-F]{64}$/;
+
+/**
+ * Validate a payment authorization's fields before processing.
+ * Throws a descriptive error on the first violation.
+ *
+ * Checks (per SECURITY-INVARIANTS.md §4):
+ *   - amount > 0
+ *   - nonce is a 64-char hex string (32 bytes)
+ *   - from / to are valid TON addresses
+ */
+export function validateAuthorization(auth: PaymentAuthorization): void {
+  if (auth.amount <= 0n) {
+    throw new Error("amount must be > 0");
+  }
+  if (!HEX_64_RE.test(auth.nonce)) {
+    throw new Error("nonce must be a 64-character hex string (32 bytes)");
+  }
+  try {
+    Address.parse(auth.from);
+  } catch {
+    throw new Error("invalid 'from' TON address");
+  }
+  try {
+    Address.parse(auth.to);
+  } catch {
+    throw new Error("invalid 'to' TON address");
+  }
+}
+
 /**
  * Build the canonical message bytes for a payment authorization.
  */
 export function buildAuthMessage(auth: PaymentAuthorization): Buffer {
+  validateAuthorization(auth);
   const fromAddr = Address.parse(auth.from);
   const toAddr = Address.parse(auth.to);
 
@@ -66,9 +97,8 @@ export function buildAuthMessage(auth: PaymentAuthorization): Buffer {
   timeBuf.copy(buf, offset);
   offset += 8;
 
-  // Nonce (32 bytes)
+  // Nonce (32 bytes) — format already validated by validateAuthorization
   const nonceBuf = Buffer.from(auth.nonce, "hex");
-  if (nonceBuf.length !== 32) throw new Error("Nonce must be 32 bytes");
   nonceBuf.copy(buf, offset);
 
   return buf;
