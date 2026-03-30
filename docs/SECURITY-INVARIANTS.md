@@ -1,4 +1,4 @@
-# Security Invariants — CyberNanoPay
+# Security Invariants — NanoPay
 
 这些是支付协议的安全红线。违反任何一条都是严重 bug。
 

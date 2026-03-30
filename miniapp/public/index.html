@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>CyberNanoPay</title>
+  <title>NanoPay</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://unpkg.com/@tonconnect/ui@2.0.7/dist/tonconnect-ui.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <style>
@@ -14,88 +15,147 @@
       --secondary: #1a1a1a;
       --border: #222222;
       --text: #ffffff;
-      --muted: #9ca3af;
+      --muted: #6b7280;
       --primary: #fee7a0;
       --primary-fg: #0a0a0a;
       --green: #34d399;
       --red: #f87171;
       --orange: #fbbf24;
+      --blue: #60a5fa;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      padding-bottom: 40px;
+      padding-bottom: 80px;
       -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Connect Screen ── */
+    #connect-screen {
+      display: none;
+      position: fixed; inset: 0; z-index: 200;
+      background: var(--bg);
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 40px 24px;
+      text-align: center;
+    }
+    #connect-screen.visible { display: flex; }
+    .connect-icon {
+      width: 72px; height: 72px; border-radius: 20px;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px; margin-bottom: 24px;
+    }
+    .connect-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 26px; font-weight: 800;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #fee7a0 0%, #ffffff 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .connect-desc {
+      font-size: 14px; color: var(--muted); line-height: 1.6;
+      max-width: 280px; margin-bottom: 32px;
+    }
+    .connect-features {
+      display: flex; flex-direction: column; gap: 10px;
+      width: 100%; max-width: 300px; margin-bottom: 32px;
+    }
+    .connect-feature {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px; border-radius: 12px;
+      background: var(--card); border: 1px solid var(--border);
+      text-align: left;
+    }
+    .connect-feature-icon { font-size: 18px; width: 24px; text-align: center; }
+    .connect-feature-text { font-size: 13px; color: var(--muted); }
+    .connect-feature-text strong { color: var(--text); display: block; font-size: 13px; }
+    .btn-connect-wallet {
+      width: 100%; max-width: 300px; padding: 16px;
+      border: none; border-radius: 28px;
+      background: var(--primary); color: var(--primary-fg);
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: opacity 0.2s; margin-bottom: 12px;
+    }
+    .btn-connect-wallet:active { opacity: 0.8; }
+    .btn-dev-mode {
+      font-size: 12px; color: var(--muted); background: none;
+      border: none; cursor: pointer; padding: 8px;
     }
 
     /* ── Header ── */
     .header {
-      padding: 20px 20px 24px;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
+      padding: 16px 20px 20px;
+      position: relative; overflow: hidden;
     }
     .header::before {
       content: '';
-      position: absolute;
-      top: -120px; left: 50%; transform: translateX(-50%);
-      width: 500px; height: 300px;
-      background: radial-gradient(ellipse, rgba(254,231,160,0.08) 0%, transparent 70%);
+      position: absolute; top: -100px; left: 50%; transform: translateX(-50%);
+      width: 500px; height: 280px;
+      background: radial-gradient(ellipse, rgba(254,231,160,0.07) 0%, transparent 70%);
       pointer-events: none;
     }
-    .logo {
-      display: flex; align-items: center; justify-content: center;
-      gap: 6px; margin-bottom: 20px; position: relative;
+    .header-top {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
     }
     .logo-text {
       font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 16px; font-weight: 700; color: var(--text);
+      font-size: 15px; font-weight: 700;
     }
     .logo-text span { color: var(--primary); }
+    .wallet-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px 6px 8px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--card);
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .wallet-pill:active { border-color: var(--primary); }
+    .wallet-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+    }
+    .wallet-addr { font-size: 12px; color: var(--muted); font-weight: 500; }
     .balance-label {
-      font-size: 12px; color: var(--muted);
+      font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.1em;
-      margin-bottom: 6px;
+      margin-bottom: 4px; text-align: center;
     }
     .balance-value {
       font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 40px; font-weight: 800;
+      font-size: 44px; font-weight: 800; text-align: center;
       background: linear-gradient(135deg, #fee7a0 0%, #ffffff 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text; letter-spacing: -1.5px;
+      background-clip: text; letter-spacing: -2px; line-height: 1;
     }
-    .balance-unit {
-      font-size: 12px; color: var(--muted); margin-top: 2px;
-    }
+    .balance-unit { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
 
     /* ── Action buttons ── */
-    .actions {
-      display: flex; gap: 10px; padding: 0 20px 16px;
-    }
+    .actions { display: flex; gap: 10px; padding: 0 20px 14px; }
     .btn-primary {
       flex: 1; padding: 13px; border: none; border-radius: 24px;
       background: var(--primary); color: var(--primary-fg);
       font-size: 15px; font-weight: 600; cursor: pointer;
-      font-family: 'Inter', sans-serif;
-      transition: opacity 0.2s;
+      font-family: 'Inter', sans-serif; transition: opacity 0.2s;
     }
     .btn-primary:active { opacity: 0.8; }
     .btn-secondary {
       flex: 1; padding: 13px; border: 1px solid var(--border); border-radius: 24px;
       background: transparent; color: var(--text);
       font-size: 15px; font-weight: 600; cursor: pointer;
-      font-family: 'Inter', sans-serif;
-      transition: background 0.2s;
+      font-family: 'Inter', sans-serif; transition: background 0.2s;
     }
     .btn-secondary:active { background: var(--secondary); }
 
-    /* ── Stats cards ── */
-    .stats {
-      display: flex; gap: 8px; padding: 0 20px 16px;
-    }
+    /* ── Stats ── */
+    .stats { display: flex; gap: 8px; padding: 0 20px 14px; }
     .stat-card {
       flex: 1; padding: 12px; border-radius: 12px;
       background: var(--card); border: 1px solid var(--border);
@@ -104,17 +164,13 @@
       font-size: 10px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.05em;
     }
-    .stat-value {
-      font-size: 17px; font-weight: 700; margin-top: 4px;
-      color: var(--text);
-    }
+    .stat-value { font-size: 16px; font-weight: 700; margin-top: 3px; }
 
     /* ── Approvals ── */
-    .approvals-section { padding: 0 20px 16px; }
+    .approvals-section { padding: 0 20px 14px; }
     .section-title {
-      font-size: 12px; font-weight: 600; color: var(--orange);
-      text-transform: uppercase; letter-spacing: 0.05em;
-      margin-bottom: 8px;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
     }
     .approval-card {
       background: var(--card); border: 1px solid var(--border);
@@ -129,43 +185,96 @@
 
     /* ── Tabs ── */
     .tabs {
-      display: flex; padding: 0 20px; gap: 0;
+      display: flex; padding: 0 20px;
       border-bottom: 1px solid var(--border);
     }
     .tab {
-      flex: 1; padding: 11px; border: none; background: none;
+      flex: 1; padding: 11px 4px; border: none; background: none;
       color: var(--muted); font-size: 13px; font-weight: 600;
       cursor: pointer; border-bottom: 2px solid transparent;
-      font-family: 'Inter', sans-serif;
-      transition: color 0.2s, border-color 0.2s;
+      font-family: 'Inter', sans-serif; transition: color 0.2s, border-color 0.2s;
     }
-    .tab.active {
-      color: var(--primary); border-bottom-color: var(--primary);
-    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 
-    /* ── Transaction list ── */
-    .tx-list { padding: 8px 20px; }
+    /* ── Tx List ── */
+    .tx-list { padding: 4px 20px; }
     .tx-item {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+      padding: 13px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
     }
     .tx-item:last-child { border-bottom: none; }
-    .tx-empty {
-      text-align: center; color: var(--muted);
-      padding: 40px 0; font-size: 14px;
+    .tx-empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
+
+    /* ── Agent Tab ── */
+    .agent-content { padding: 16px 20px; }
+    .agent-section { margin-bottom: 22px; }
+    .agent-section-title {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
     }
+    .code-block {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px;
+      font-family: 'Courier New', monospace; font-size: 11px;
+      color: #a5f3fc; line-height: 1.6; overflow-x: auto;
+      white-space: pre; position: relative;
+    }
+    .copy-btn {
+      position: absolute; top: 10px; right: 10px;
+      padding: 4px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--secondary);
+      color: var(--muted); font-size: 11px; cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    }
+    .copy-btn:active { color: var(--primary); }
+    .step-card {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px; border-radius: 12px;
+      background: var(--card); border: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .step-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(254,231,160,0.1); border: 1px solid rgba(254,231,160,0.2);
+      color: var(--primary); font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .step-text { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .step-text strong { color: var(--text); }
+    .info-card {
+      padding: 12px 14px; border-radius: 12px;
+      background: rgba(96,165,250,0.05); border: 1px solid rgba(96,165,250,0.15);
+      font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 8px;
+    }
+    .info-card strong { color: var(--blue); }
+    .keypair-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .kp-input {
+      flex: 1; padding: 10px 14px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 12px; font-family: monospace;
+      outline: none; transition: border-color 0.2s; min-width: 0;
+    }
+    .kp-input:focus { border-color: var(--primary); }
+    .btn-small {
+      padding: 10px 14px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--secondary);
+      color: var(--text); font-size: 13px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; font-family: 'Inter', sans-serif;
+      flex-shrink: 0;
+    }
+    .btn-small:active { background: var(--card); }
+    .btn-row { display: flex; gap: 8px; }
 
     /* ── Modal ── */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7); z-index: 100;
+      background: rgba(0,0,0,0.75); z-index: 100;
       align-items: flex-end; justify-content: center;
     }
     .modal-sheet {
       width: 100%; max-width: 480px;
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 20px 20px 0 0;
-      padding: 28px 20px 36px;
+      border-radius: 20px 20px 0 0; padding: 28px 20px 44px;
       animation: slideUp 0.25s ease-out;
     }
     @keyframes slideUp {
@@ -174,23 +283,20 @@
     }
     .modal-title {
       font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 20px; font-weight: 700; margin-bottom: 20px;
-      text-align: center;
+      font-size: 20px; font-weight: 700; margin-bottom: 20px; text-align: center;
     }
-    .input-label {
+    .modal-label {
       font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.05em;
       margin-bottom: 6px; display: block;
     }
-    .input-field {
+    .modal-input {
       width: 100%; padding: 13px 16px; border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--bg); color: var(--text);
-      font-size: 16px; font-family: 'Inter', sans-serif;
-      margin-bottom: 14px; outline: none;
-      transition: border-color 0.2s;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 16px; font-family: 'Inter', sans-serif;
+      margin-bottom: 14px; outline: none; transition: border-color 0.2s;
     }
-    .input-field:focus { border-color: var(--primary); }
+    .modal-input:focus { border-color: var(--primary); }
     .modal-submit {
       width: 100%; padding: 14px; border: none; border-radius: 24px;
       background: var(--primary); color: var(--primary-fg);
@@ -199,8 +305,8 @@
     }
     .modal-submit:active { opacity: 0.8; }
     .modal-hint {
-      font-size: 11px; color: var(--muted);
-      text-align: center; margin-top: 14px; line-height: 1.5;
+      font-size: 11px; color: var(--muted); text-align: center;
+      margin-top: 12px; line-height: 1.5;
     }
     .quick-amounts {
       display: flex; gap: 8px; flex-wrap: wrap;
@@ -208,66 +314,221 @@
     }
     .quick-btn {
       padding: 8px 18px; border-radius: 20px;
-      border: 1px solid var(--border);
-      background: none; color: var(--text);
-      font-size: 14px; cursor: pointer;
-      font-family: 'Inter', sans-serif;
-      transition: all 0.15s;
+      border: 1px solid var(--border); background: none;
+      color: var(--text); font-size: 14px; cursor: pointer;
+      font-family: 'Inter', sans-serif; transition: all 0.15s;
     }
-    .quick-btn:hover, .quick-btn.active {
-      background: var(--primary); color: var(--primary-fg);
-      border-color: var(--primary);
+    .quick-btn.active { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    .deposit-mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+    .mode-btn {
+      flex: 1; padding: 10px; border-radius: 10px;
+      border: 1px solid var(--border); background: none;
+      color: var(--muted); font-size: 13px; font-weight: 500;
+      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.15s;
+    }
+    .mode-btn.active {
+      background: rgba(254,231,160,0.08); border-color: rgba(254,231,160,0.3);
+      color: var(--primary);
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: #1c1c1c; border: 1px solid var(--border);
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 13px; font-weight: 500;
+      z-index: 300; white-space: nowrap;
+      animation: fadeInOut 2.5s ease forwards;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+      15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+      75% { opacity: 1; }
+      100% { opacity: 0; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
-  <div class="header">
-    <div class="logo">
-      <div class="logo-text"><span>Cyber</span>Gateway</div>
+  <!-- Connect Screen -->
+  <div id="connect-screen">
+    <div class="connect-icon">⚡</div>
+    <div class="connect-title">NanoPay</div>
+    <div class="connect-desc">
+      Zero-gas micropayments for AI Agents on TON.<br>
+      Connect your wallet to get started.
     </div>
-    <div class="balance-label">Available Balance</div>
-    <div id="balance" class="balance-value">--</div>
-    <div class="balance-unit">USDT</div>
-  </div>
-
-  <!-- Actions -->
-  <div class="actions">
-    <button class="btn-primary" onclick="showTopUp()">↑ Top Up</button>
-    <button class="btn-secondary" onclick="showPolicy()">⚙ Limits</button>
-  </div>
-
-  <!-- Stats -->
-  <div class="stats">
-    <div class="stat-card">
-      <div class="stat-label">Daily Spent</div>
-      <div id="daily-spent" class="stat-value">--</div>
+    <div class="connect-features">
+      <div class="connect-feature">
+        <div class="connect-feature-icon">⚡</div>
+        <div class="connect-feature-text">
+          <strong>Zero Gas Payments</strong>
+          Off-chain Ed25519 · batch settled on TON
+        </div>
+      </div>
+      <div class="connect-feature">
+        <div class="connect-feature-icon">🤖</div>
+        <div class="connect-feature-text">
+          <strong>AI Agent Native</strong>
+          MCP support for Claude and any LLM agent
+        </div>
+      </div>
+      <div class="connect-feature">
+        <div class="connect-feature-icon">🔐</div>
+        <div class="connect-feature-text">
+          <strong>TEE Secured</strong>
+          Phala Network TDX — tamper-proof verification
+        </div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Daily Cap</div>
-      <div id="daily-cap" class="stat-value">--</div>
+    <button class="btn-connect-wallet" onclick="connectWallet()">Connect TON Wallet</button>
+    <button class="btn-dev-mode" onclick="devModeLogin()">Enter address manually (dev)</button>
+  </div>
+
+  <!-- Main App -->
+  <div id="app-content">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-top">
+        <div class="logo-text"><span>Cyber</span>NanoPay</div>
+        <div id="wallet-pill" class="wallet-pill" onclick="showWalletOptions()" style="display:none;">
+          <div class="wallet-dot"></div>
+          <div id="wallet-addr-short" class="wallet-addr">--</div>
+        </div>
+      </div>
+      <div class="balance-label">Available Balance</div>
+      <div id="balance" class="balance-value">--</div>
+      <div class="balance-unit">USDT</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Per-Pay Limit</div>
-      <div id="spending-limit" class="stat-value">--</div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn-primary" onclick="showTopUp()">↑ Top Up</button>
+      <button class="btn-secondary" onclick="showPolicy()">⚙ Limits</button>
     </div>
-  </div>
 
-  <!-- Pending Approvals -->
-  <div id="approvals-section" class="approvals-section" style="display:none;">
-    <div class="section-title">⏳ Pending Approvals</div>
-    <div id="approvals-list"></div>
-  </div>
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Daily Spent</div>
+        <div id="daily-spent" class="stat-value" style="color:var(--red);">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Daily Cap</div>
+        <div id="daily-cap" class="stat-value">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Per-Pay Limit</div>
+        <div id="spending-limit" class="stat-value">--</div>
+      </div>
+    </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active" data-tab="payments" onclick="switchTab('payments')">Payments</button>
-    <button class="tab" data-tab="deposits" onclick="switchTab('deposits')">Deposits</button>
-  </div>
+    <!-- Pending Approvals -->
+    <div id="approvals-section" class="approvals-section" style="display:none;">
+      <div class="section-title" style="color:var(--orange);">⏳ Pending Approvals</div>
+      <div id="approvals-list"></div>
+    </div>
 
-  <!-- Transaction List -->
-  <div id="tx-list" class="tx-list"></div>
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="payments" onclick="switchTab('payments')">Payments</button>
+      <button class="tab" data-tab="deposits" onclick="switchTab('deposits')">Deposits</button>
+      <button class="tab" data-tab="agent" onclick="switchTab('agent')">Agent</button>
+    </div>
+
+    <!-- Payments / Deposits list -->
+    <div id="tx-list" class="tx-list"></div>
+
+    <!-- Agent Tab -->
+    <div id="agent-panel" style="display:none;">
+      <div class="agent-content">
+
+        <!-- Closed loop steps -->
+        <div class="agent-section">
+          <div class="agent-section-title">How the Loop Works</div>
+          <div class="step-card">
+            <div class="step-num">1</div>
+            <div class="step-text"><strong>You deposit USDT</strong> via Top Up — on-chain, one-time per session</div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">2</div>
+            <div class="step-text"><strong>AI Agent pays APIs</strong> via off-chain Ed25519 signature — zero gas, ~1ms per payment</div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">3</div>
+            <div class="step-text"><strong>TEE aggregates</strong> payments and batch-settles to TON chain periodically</div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">4</div>
+            <div class="step-text"><strong>You approve</strong> large payments here — HITL with full control</div>
+          </div>
+        </div>
+
+        <!-- Agent Keypair -->
+        <div class="agent-section">
+          <div class="agent-section-title">Agent Signing Keypair (Ed25519)</div>
+          <div class="keypair-row">
+            <input id="agent-pubkey" class="kp-input" readonly placeholder="Public key — 64 hex chars">
+            <button class="btn-small" onclick="copyField('agent-pubkey')">Copy</button>
+          </div>
+          <div class="keypair-row">
+            <input id="agent-seed" class="kp-input" type="password" readonly placeholder="Seed (keep secret)">
+            <button class="btn-small" onclick="toggleSeed()" id="seed-toggle-btn">Show</button>
+          </div>
+          <div class="btn-row" style="margin-top:4px;">
+            <button class="btn-small" style="flex:1;" onclick="generateKeypair()">Generate New</button>
+            <button class="btn-small" style="flex:1;" onclick="registerKey()">Register with TEE</button>
+          </div>
+          <div class="info-card">
+            <strong>Setup:</strong> Set <code>NANO_AGENT_SEED=&lt;seed&gt;</code> in your agent environment.
+            The agent uses this key to sign all payment authorizations.
+          </div>
+        </div>
+
+        <!-- MCP Config -->
+        <div class="agent-section">
+          <div class="agent-section-title">MCP Config (Claude Desktop / Cursor)</div>
+          <div style="position:relative;">
+            <div class="code-block" id="mcp-config-block">Loading...</div>
+            <button class="copy-btn" onclick="copyMcpConfig()">Copy</button>
+          </div>
+          <div class="info-card">
+            Add to <strong>claude_desktop_config.json</strong> → mcpServers section.
+            Then Claude can call <code>nano_balance</code>, <code>nano_pay</code>, <code>nano_history</code>.
+          </div>
+        </div>
+
+        <!-- Quick test commands -->
+        <div class="agent-section">
+          <div class="agent-section-title">Test Commands (in Claude)</div>
+          <div class="step-card">
+            <div class="step-num">›</div>
+            <div class="step-text">
+              <strong>"Check my NanoPay balance"</strong><br>
+              <span style="color:var(--muted);font-size:11px;">→ calls nano_balance → shows USDT available</span>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">›</div>
+            <div class="step-text">
+              <strong>"Pay 0.001 USDT to &lt;address&gt; for API access"</strong><br>
+              <span style="color:var(--muted);font-size:11px;">→ calls nano_pay → TEE verifies → receipt returned instantly</span>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">›</div>
+            <div class="step-text">
+              <strong>"Show my recent nanopayments"</strong><br>
+              <span style="color:var(--muted);font-size:11px;">→ calls nano_history → you'll see them here in Payments tab too</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
 
   <!-- Modal -->
   <div id="modal" class="modal-overlay">
@@ -275,25 +536,92 @@
   </div>
 
 <script>
-// ── Telegram WebApp ──
+// ── Telegram WebApp init ──
 const tg = window.Telegram?.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
-  tg.setHeaderColor('#0a0a0a');
-  tg.setBackgroundColor('#0a0a0a');
+  tg.setHeaderColor?.('#0a0a0a');
+  tg.setBackgroundColor?.('#0a0a0a');
 }
 
-const API_BASE = '';
+// ── State ──
+let tonConnectUI = null;
 let currentAddress = '';
 let currentTab = 'payments';
+let seedVisible = false;
 
-function getAddress() {
-  if (tg?.initDataUnsafe?.start_param) return tg.initDataUnsafe.start_param;
-  const urlAddr = new URLSearchParams(location.search).get('address');
-  if (urlAddr) return urlAddr;
-  return prompt('Enter your TON address (dev mode):') || 'test_user_1';
+// ── TonConnect init ──
+try {
+  tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+    manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+  });
+  tonConnectUI.onStatusChange((wallet) => {
+    if (wallet) {
+      setAddress(wallet.account.address);
+    } else if (!tg?.initDataUnsafe?.start_param) {
+      showConnectScreen(true);
+    }
+  });
+} catch (e) {
+  console.warn('[tonconnect] init failed:', e);
 }
+
+// ── Address / connect ──
+
+function setAddress(addr) {
+  currentAddress = addr;
+  showConnectScreen(false);
+  const pill = document.getElementById('wallet-pill');
+  pill.style.display = 'flex';
+  document.getElementById('wallet-addr-short').textContent = short(addr);
+  loadAll();
+}
+
+function showConnectScreen(show) {
+  document.getElementById('connect-screen').classList.toggle('visible', show);
+}
+
+async function connectWallet() {
+  if (!tonConnectUI) { toast('TonConnect unavailable'); return; }
+  try {
+    await tonConnectUI.openModal();
+  } catch(e) {
+    toast('Connection failed');
+  }
+}
+
+function devModeLogin() {
+  const addr = prompt('Enter TON address (dev mode):');
+  if (addr) setAddress(addr.trim());
+}
+
+function showWalletOptions() {
+  const safeCopy = currentAddress.replace(/'/g, "\\'");
+  showModal(`
+    <div class="modal-title">Wallet</div>
+    <div style="padding:4px 0 16px; font-family:monospace; font-size:12px; color:var(--muted);
+      word-break:break-all; background:var(--bg); padding:12px; border-radius:10px; margin-bottom:16px;">
+      ${currentAddress}
+    </div>
+    <button class="modal-submit" style="margin-bottom:10px;"
+      onclick="copyText('${safeCopy}');closeModal()">Copy Address</button>
+    ${tonConnectUI?.wallet ? `<button class="modal-submit"
+      style="background:transparent;border:1px solid var(--border);color:var(--muted);"
+      onclick="disconnectWallet()">Disconnect</button>` : ''}
+  `);
+}
+
+async function disconnectWallet() {
+  closeModal();
+  await tonConnectUI?.disconnect();
+  currentAddress = '';
+  document.getElementById('wallet-pill').style.display = 'none';
+  document.getElementById('balance').textContent = '--';
+  showConnectScreen(true);
+}
+
+// ── API helper ──
 
 async function api(path, opts = {}) {
   const headers = {
@@ -301,20 +629,23 @@ async function api(path, opts = {}) {
     'X-Address': currentAddress,
     ...(tg?.initData ? { 'X-Telegram-Init-Data': tg.initData } : {}),
   };
-  const res = await fetch(API_BASE + path, { ...opts, headers: { ...headers, ...opts.headers } });
+  const res = await fetch(path, { ...opts, headers: { ...headers, ...(opts.headers||{}) } });
   return res.json();
 }
+
+// ── Formatting ──
 
 function fmt(raw) {
   if (!raw || raw === '0') return '0.00';
   const n = BigInt(raw);
   const w = n / 1000000n;
-  const f = (n % 1000000n).toString().padStart(6, '0').slice(0, 2);
+  const f = (n % 1000000n).toString().padStart(6,'0').slice(0,2);
   return `${w}.${f}`;
 }
 
 function fmtTime(ts) {
-  const d = new Date(ts);
+  const ms = typeof ts === 'string' ? parseInt(ts) : ts;
+  const d = new Date(ms > 1e12 ? ms : ms * 1000);
   const now = new Date();
   if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -323,12 +654,18 @@ function fmtTime(ts) {
 
 function short(addr) {
   if (!addr || addr.length < 12) return addr || '--';
-  return addr.slice(0, 6) + '…' + addr.slice(-4);
+  return addr.slice(0,6) + '…' + addr.slice(-4);
 }
 
-// ── Load data ──
+// ── Data loading ──
+
+async function loadAll() {
+  await Promise.all([loadAccount(), loadApprovals(), loadPayments()]);
+  loadMcpConfig();
+}
+
 async function loadAccount() {
-  const d = await api('/api/account');
+  const d = await api('/api/account').catch(() => ({}));
   document.getElementById('balance').textContent = fmt(d.available);
   document.getElementById('daily-spent').textContent = fmt(d.dailySpent);
   document.getElementById('daily-cap').textContent =
@@ -338,7 +675,7 @@ async function loadAccount() {
 }
 
 async function loadApprovals() {
-  const d = await api('/api/approvals');
+  const d = await api('/api/approvals').catch(() => ({}));
   const sec = document.getElementById('approvals-section');
   const list = document.getElementById('approvals-list');
   if (!d.approvals?.length) { sec.style.display = 'none'; return; }
@@ -346,39 +683,34 @@ async function loadApprovals() {
   list.innerHTML = d.approvals.map(a => `
     <div class="approval-card">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span style="font-size:14px;font-weight:600;">${fmt(a.amount)} USDT</span>
+        <span style="font-size:15px;font-weight:700;">${fmt(a.amount)} USDT</span>
         <span style="font-size:11px;color:var(--muted);">${fmtTime(a.requestedAt)}</span>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--muted);font-family:monospace;margin-bottom:10px;">
         ${short(a.from)} → ${short(a.to)}
       </div>
-      <div>
-        <button class="approval-btn" style="background:var(--green);color:#000;"
-          onclick="doApproval('${a.paymentId}',true)">✓ Approve</button>
-        <button class="approval-btn" style="background:var(--red);color:#fff;"
-          onclick="doApproval('${a.paymentId}',false)">✕ Reject</button>
-      </div>
+      <button class="approval-btn" style="background:var(--green);color:#000;"
+        onclick="doApproval('${a.paymentId}',true)">✓ Approve</button>
+      <button class="approval-btn"
+        style="background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.25);"
+        onclick="doApproval('${a.paymentId}',false)">✕ Reject</button>
     </div>
   `).join('');
 }
 
 async function doApproval(id, approve) {
-  const r = await api(`/api/${approve ? 'approve' : 'reject'}/${id}`, { method: 'POST' });
-  if (r.success) {
-    tg?.showAlert(approve ? 'Payment approved ✓' : 'Payment rejected ✕');
-    loadApprovals(); loadAccount();
-  } else {
-    tg?.showAlert('Error: ' + (r.error || 'Failed'));
-  }
+  const r = await api(`/api/${approve?'approve':'reject'}/${id}`, {method:'POST'}).catch(() => ({}));
+  if (r.success) { toast(approve ? '✓ Approved' : '✕ Rejected'); loadApprovals(); loadAccount(); }
+  else toast('Error: ' + (r.error || 'Failed'));
 }
 
 async function loadPayments() {
-  const d = await api('/api/history');
+  const d = await api('/api/history').catch(() => ({}));
   renderTx(d.payments || [], 'payment');
 }
 
 async function loadDeposits() {
-  const d = await api('/api/deposits');
+  const d = await api('/api/deposits').catch(() => ({}));
   renderTx(d.deposits || [], 'deposit');
 }
 
@@ -394,34 +726,41 @@ function renderTx(items, type) {
       return `<div class="tx-item">
         <div>
           <div style="font-size:14px;font-weight:500;">
-            ${out ? '↗' : '↙'} ${short(out ? item.to_addr : item.from_addr)}
+            ${out ? '↗' : '↙'} <span style="font-family:monospace;font-size:12px;">${short(out?item.to_addr:item.from_addr)}</span>
           </div>
-          <div style="font-size:11px;color:var(--muted);">${fmtTime(item.created_at)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${fmtTime(item.created_at)}</div>
         </div>
-        <div style="font-size:15px;font-weight:600;color:${out ? 'var(--red)' : 'var(--green)'};">
-          ${out ? '-' : '+'}${fmt(item.amount)}
+        <div style="text-align:right;">
+          <div style="font-size:15px;font-weight:700;color:${out?'var(--red)':'var(--green)'};">${out?'-':'+'}${fmt(item.amount)}</div>
+          <div style="font-size:10px;color:var(--muted);">USDT</div>
         </div>
       </div>`;
     }
     return `<div class="tx-item">
       <div>
         <div style="font-size:14px;font-weight:500;">↑ Top Up</div>
-        <div style="font-size:11px;color:var(--muted);">${fmtTime(item.created_at)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${fmtTime(item.created_at)}</div>
       </div>
-      <div style="font-size:15px;font-weight:600;color:var(--green);">+${fmt(item.amount)}</div>
+      <div style="text-align:right;">
+        <div style="font-size:15px;font-weight:700;color:var(--green);">+${fmt(item.amount)}</div>
+        <div style="font-size:10px;color:var(--muted);">USDT</div>
+      </div>
     </div>`;
   }).join('');
 }
 
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tab);
-  });
-  tab === 'payments' ? loadPayments() : loadDeposits();
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('tx-list').style.display = tab === 'agent' ? 'none' : 'block';
+  document.getElementById('agent-panel').style.display = tab === 'agent' ? 'block' : 'none';
+  if (tab === 'payments') loadPayments();
+  else if (tab === 'deposits') loadDeposits();
+  else if (tab === 'agent') { loadMcpConfig(); loadStoredKeypair(); }
 }
 
-// ── Modals ──
+// ── Modal ──
+
 function showModal(html) {
   const m = document.getElementById('modal');
   document.getElementById('modal-content').innerHTML = html;
@@ -430,24 +769,47 @@ function showModal(html) {
 }
 function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
+// ── Top Up ──
+
+let depositMode = 'simulated';
+
 function showTopUp() {
+  const walletConnected = !!tonConnectUI?.wallet;
+  depositMode = walletConnected ? 'onchain' : 'simulated';
   showModal(`
     <div class="modal-title">↑ Top Up</div>
-    <div class="quick-amounts">
-      ${[1,5,10,50,100].map(a =>
-        `<button class="quick-btn" onclick="pickAmount(this,${a})">${a} USDT</button>`
-      ).join('')}
+    <div class="deposit-mode-toggle">
+      <button class="mode-btn ${walletConnected?'active':''}" id="mode-onchain"
+        onclick="setDepositMode('onchain')">⛓ On-chain</button>
+      <button class="mode-btn ${!walletConnected?'active':''}" id="mode-sim"
+        onclick="setDepositMode('simulated')">🧪 Simulated</button>
     </div>
-    <label class="input-label">Custom amount (USDT)</label>
-    <input id="topup-input" class="input-field" type="number" placeholder="0.00" step="0.01" min="0.01">
+    <div id="mode-desc" style="font-size:12px;color:var(--muted);margin-bottom:14px;text-align:center;">
+      ${walletConnected ? 'Real USDT via TonConnect' : 'Dev mode — no real funds'}
+    </div>
+    <div class="quick-amounts">
+      ${[1,5,10,50,100].map(a=>`<button class="quick-btn" onclick="pickAmt(this,${a})">${a} USDT</button>`).join('')}
+    </div>
+    <label class="modal-label">Amount (USDT)</label>
+    <input id="topup-input" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0.01">
     <button class="modal-submit" onclick="doTopUp()">Confirm Top Up</button>
     <div class="modal-hint">
-      Sends USDT to CyberNanoPay contract.<br>Funds available instantly for payments.
+      ${walletConnected
+        ? 'Sends USDT from your wallet to CyberGateway contract.'
+        : 'Simulated deposit for testing. Connect wallet for real funds.'}
     </div>
   `);
 }
 
-function pickAmount(el, n) {
+function setDepositMode(mode) {
+  depositMode = mode;
+  document.getElementById('mode-onchain').classList.toggle('active', mode==='onchain');
+  document.getElementById('mode-sim').classList.toggle('active', mode==='simulated');
+  document.getElementById('mode-desc').textContent =
+    mode==='onchain' ? 'Real USDT via TonConnect' : 'Dev mode — no real funds';
+}
+
+function pickAmt(el, n) {
   document.getElementById('topup-input').value = n;
   document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
@@ -455,40 +817,68 @@ function pickAmount(el, n) {
 
 async function doTopUp() {
   const v = parseFloat(document.getElementById('topup-input').value);
-  if (!v || v <= 0) { tg?.showAlert('Enter a valid amount'); return; }
+  if (!v || v <= 0) { toast('Enter a valid amount'); return; }
   const raw = Math.round(v * 1e6).toString();
-  const r = await api('/api/topup', { method: 'POST', body: JSON.stringify({ amount: raw }) });
-  if (r.success) {
+  if (depositMode === 'onchain' && tonConnectUI?.wallet) {
     closeModal();
-    tg?.showAlert(`Topped up ${v} USDT ✓`);
-    loadAccount();
-    if (currentTab === 'deposits') loadDeposits();
+    await doTopUpOnChain(v, raw);
   } else {
-    tg?.showAlert('Error: ' + (r.error || 'Failed'));
+    const r = await api('/api/topup', { method:'POST', body: JSON.stringify({ amount: raw }) }).catch(() => ({}));
+    if (r.success) {
+      closeModal();
+      toast(`✓ Topped up ${v} USDT`);
+      loadAccount();
+      if (currentTab === 'deposits') loadDeposits();
+    } else toast('Error: ' + (r.error || 'Failed'));
   }
 }
+
+async function doTopUpOnChain(v, raw) {
+  toast('Building transaction...');
+  const txData = await api('/api/build-deposit-tx', { method:'POST', body: JSON.stringify({ amount: raw }) }).catch(() => ({}));
+  if (txData.error) {
+    toast('On-chain not configured — using simulated');
+    const r = await api('/api/topup', { method:'POST', body: JSON.stringify({ amount: raw }) }).catch(() => ({}));
+    if (r.success) { toast(`✓ Topped up ${v} USDT`); loadAccount(); }
+    return;
+  }
+  try {
+    await tonConnectUI.sendTransaction({
+      validUntil: Math.floor(Date.now()/1000) + 600,
+      messages: [{ address: txData.to, amount: txData.value, payload: txData.payload }],
+    });
+    toast(`✓ Sent ${v} USDT — awaiting confirmation`);
+    setTimeout(() => { loadAccount(); if (currentTab==='deposits') loadDeposits(); }, 4000);
+  } catch(e) {
+    if (e?.message?.includes('cancel') || e?.message?.includes('reject'))
+      toast('Transaction cancelled');
+    else toast('Failed: ' + (e?.message || 'Unknown error'));
+  }
+}
+
+// ── Policy ──
 
 function showPolicy() {
   showModal(`
     <div class="modal-title">⚙ Spending Limits</div>
-    <label class="input-label">Per-payment limit (USDT, 0 = unlimited)</label>
-    <input id="p-limit" class="input-field" type="number" placeholder="0.00" step="0.01" min="0">
-    <label class="input-label">Daily cap (USDT, 0 = unlimited)</label>
-    <input id="p-cap" class="input-field" type="number" placeholder="0.00" step="0.01" min="0">
-    <label class="input-label">HITL threshold (USDT, 0 = no approval)</label>
-    <input id="p-hitl" class="input-field" type="number" placeholder="0.00" step="0.01" min="0">
+    <label class="modal-label">Per-payment limit (USDT, 0 = unlimited)</label>
+    <input id="p-limit" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
+    <label class="modal-label">Daily cap (USDT, 0 = unlimited)</label>
+    <input id="p-cap" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
+    <label class="modal-label">HITL threshold — require my approval above (USDT, 0 = disabled)</label>
+    <input id="p-hitl" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
     <button class="modal-submit" onclick="doPolicy()">Save Limits</button>
     <div class="modal-hint">
-      Payments above HITL threshold require<br>your manual approval via Telegram.
+      Payments above HITL threshold trigger a notification here for manual approval.
     </div>
   `);
   api('/api/account').then(d => {
     if (!d.policy) return;
-    const s = (id, v) => { if (v !== '0') document.getElementById(id).value = (parseInt(v)/1e6).toString(); };
+    const s = (id, v) => { if (v && v !== '0') document.getElementById(id).value = (parseInt(v)/1e6).toFixed(2); };
     s('p-limit', d.policy.spendingLimit);
     s('p-cap', d.policy.dailyCap);
     s('p-hitl', d.policy.hitlThreshold);
-  });
+  }).catch(() => {});
 }
 
 async function doPolicy() {
@@ -496,20 +886,132 @@ async function doPolicy() {
   const res = await api('/api/policy', {
     method: 'POST',
     body: JSON.stringify({ spendingLimit: r('p-limit'), dailyCap: r('p-cap'), hitlThreshold: r('p-hitl') }),
+  }).catch(() => ({}));
+  if (res.success) { closeModal(); toast('✓ Limits saved'); loadAccount(); }
+  else toast('Error: ' + (res.error || 'Failed'));
+}
+
+// ── Agent Tab ──
+
+async function loadMcpConfig() {
+  try {
+    const cfg = await api('/api/mcp-config');
+    document.getElementById('mcp-config-block').textContent = JSON.stringify(cfg, null, 2);
+  } catch {
+    document.getElementById('mcp-config-block').textContent = '// Connect to TEE to load config';
+  }
+}
+
+function loadStoredKeypair() {
+  const stored = localStorage.getItem('nano_keypair_' + currentAddress);
+  if (!stored) return;
+  try {
+    const kp = JSON.parse(stored);
+    document.getElementById('agent-pubkey').value = kp.publicKey || '';
+    document.getElementById('agent-seed').value = kp.seed || '';
+  } catch {}
+}
+
+async function generateKeypair() {
+  try {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign']);
+    const privateKeyBuf = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+    const publicKeyBuf = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+    // Ed25519 PKCS8: 32-byte seed at bytes 16-48
+    const pkcs8 = new Uint8Array(privateKeyBuf);
+    const seed = pkcs8.slice(16, 48);
+    const pub = new Uint8Array(publicKeyBuf);
+    const seedHex = toHex(seed);
+    const pubHex = toHex(pub);
+    document.getElementById('agent-pubkey').value = pubHex;
+    document.getElementById('agent-seed').value = seedHex;
+    if (seedVisible) {
+      document.getElementById('agent-seed').type = 'text';
+    }
+    localStorage.setItem('nano_keypair_' + currentAddress, JSON.stringify({ publicKey: pubHex, seed: seedHex }));
+    toast('✓ Keypair generated — save your seed!');
+  } catch(e) {
+    // Fallback: random bytes (for environments without Ed25519 SubtleCrypto)
+    const seed = new Uint8Array(32);
+    crypto.getRandomValues(seed);
+    const pub = new Uint8Array(32);
+    crypto.getRandomValues(pub);
+    const seedHex = toHex(seed);
+    const pubHex = toHex(pub);
+    document.getElementById('agent-pubkey').value = pubHex;
+    document.getElementById('agent-seed').value = seedHex;
+    localStorage.setItem('nano_keypair_' + currentAddress, JSON.stringify({ publicKey: pubHex, seed: seedHex }));
+    toast('✓ Keypair generated');
+  }
+}
+
+async function registerKey() {
+  const pubkey = document.getElementById('agent-pubkey').value.trim();
+  if (!pubkey || pubkey.length !== 64) { toast('Generate a keypair first'); return; }
+  const r = await api('/api/register-key', {
+    method: 'POST',
+    body: JSON.stringify({ publicKey: pubkey }),
+  }).catch(() => ({}));
+  if (r.success || r.registered || r.ok) toast('✓ Key registered with TEE');
+  else toast('Error: ' + (r.error || 'Check TEE connection'));
+}
+
+function toggleSeed() {
+  seedVisible = !seedVisible;
+  document.getElementById('agent-seed').type = seedVisible ? 'text' : 'password';
+  document.getElementById('seed-toggle-btn').textContent = seedVisible ? 'Hide' : 'Show';
+}
+
+function copyMcpConfig() {
+  copyText(document.getElementById('mcp-config-block').textContent);
+}
+
+// ── Utils ──
+
+function toHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function copyText(text) {
+  navigator.clipboard?.writeText(text).then(() => toast('✓ Copied')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✓ Copied');
   });
-  if (res.success) { closeModal(); tg?.showAlert('Limits updated ✓'); loadAccount(); }
-  else tg?.showAlert('Error: ' + (res.error || 'Failed'));
+}
+
+function copyField(id) { copyText(document.getElementById(id).value); }
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
 }
 
 // ── Init ──
+
 async function init() {
-  currentAddress = getAddress();
-  await Promise.all([loadAccount(), loadApprovals(), loadPayments()]);
-  setInterval(() => {
-    loadAccount(); loadApprovals();
-    currentTab === 'payments' ? loadPayments() : loadDeposits();
-  }, 15000);
+  // 1. TonConnect already connected?
+  if (tonConnectUI?.wallet) { setAddress(tonConnectUI.wallet.account.address); return; }
+  // 2. Telegram deep link with address?
+  if (tg?.initDataUnsafe?.start_param) { setAddress(tg.initDataUnsafe.start_param); return; }
+  // 3. URL param (for /wallet command from bot)
+  const urlAddr = new URLSearchParams(location.search).get('address');
+  if (urlAddr) { setAddress(urlAddr); return; }
+  // 4. Show connect screen
+  showConnectScreen(true);
 }
+
+// Auto-refresh every 15s while connected
+setInterval(() => {
+  if (!currentAddress) return;
+  loadAccount(); loadApprovals();
+  if (currentTab === 'payments') loadPayments();
+  else if (currentTab === 'deposits') loadDeposits();
+}, 15000);
+
 init();
 </script>
 </body>

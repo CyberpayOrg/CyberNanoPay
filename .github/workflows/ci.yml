@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contracts:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: contracts/package-lock.json
+      - run: cd contracts && npm ci
+      - run: cd contracts && npm run build
+      - run: cd contracts && npm test
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install all packages
+        run: |
+          cd sdk && npm ci
+          cd ../tee && npm ci
+          cd ../gateway && npm ci
+          cd ../miniapp && npm ci
+      - name: Type check SDK
+        run: cd sdk && npx tsc --noEmit
+      - name: Type check TEE
+        run: cd tee && npx tsc --noEmit
+      - name: Type check Gateway
+        run: cd gateway && npx tsc --noEmit
+
+  security-lint:
+    name: Security Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/lint-security.sh

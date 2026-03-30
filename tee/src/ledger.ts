@@ -31,8 +31,11 @@ export class Ledger {
   private totalDeposited = new Map<string, bigint>();
   private totalSpent = new Map<string, bigint>();
 
-  /** Used nonces for replay protection */
-  private usedNonces = new Set<string>();
+  /** Used nonces for replay protection: nonce → expiry timestamp (validBefore) */
+  private usedNonces = new Map<string, number>();
+
+  /** Pending outgoing amounts per address (deducted but not yet settled on-chain) */
+  private pendingOutgoing = new Map<string, bigint>();
 
   /** Global stats */
   private _totalDeposits = 0n;
@@ -98,7 +101,7 @@ export class Ledger {
    * needsApproval = true means the payment exceeds HITL threshold
    * and should be held for human approval.
    */
-  tryDeduct(from: string, amount: bigint, nonce: string): {
+  tryDeduct(from: string, amount: bigint, nonce: string, validBefore?: number): {
     ok: boolean;
     error?: string;
     needsApproval?: boolean;
@@ -149,7 +152,11 @@ export class Ledger {
 
     // Atomic deduct
     this.balances.set(from, available - amount);
-    this.usedNonces.add(nonce);
+    this.usedNonces.set(nonce, validBefore ?? Math.floor(Date.now() / 1000) + 600);
+
+    // Track pending outgoing (not yet settled on-chain)
+    const prevPending = this.pendingOutgoing.get(from) ?? 0n;
+    this.pendingOutgoing.set(from, prevPending + amount);
 
     // Stats
     const prevSpent = this.totalSpent.get(from) ?? 0n;
@@ -163,7 +170,7 @@ export class Ledger {
    * Force deduct — bypasses policy checks (used after HITL approval).
    * Still checks balance and nonce.
    */
-  forceDeduct(from: string, amount: bigint, nonce: string): {
+  forceDeduct(from: string, amount: bigint, nonce: string, validBefore?: number): {
     ok: boolean;
     error?: string;
   } {
@@ -185,7 +192,11 @@ export class Ledger {
     }
 
     this.balances.set(from, available - amount);
-    this.usedNonces.add(nonce);
+    this.usedNonces.set(nonce, validBefore ?? Math.floor(Date.now() / 1000) + 600);
+
+    // Track pending outgoing
+    const prevPending = this.pendingOutgoing.get(from) ?? 0n;
+    this.pendingOutgoing.set(from, prevPending + amount);
 
     const prevSpent = this.totalSpent.get(from) ?? 0n;
     this.totalSpent.set(from, prevSpent + amount);
@@ -199,14 +210,24 @@ export class Ledger {
   /**
    * After a batch is settled onchain, credit the receivers.
    * The senders were already deducted at authorization time.
+   * Also reduces the sender's pendingOutgoing.
    */
-  creditSettlement(to: string, amount: bigint): void {
+  creditSettlement(from: string, to: string, amount: bigint): void {
     const current = this.balances.get(to) ?? 0n;
     this.balances.set(to, current + amount);
 
     // Settlement is on-chain confirmed, so it's settled
     const prevSettled = this.settledBalances.get(to) ?? 0n;
     this.settledBalances.set(to, prevSettled + amount);
+
+    // Reduce sender's pending outgoing
+    const prevPending = this.pendingOutgoing.get(from) ?? 0n;
+    const newPending = prevPending > amount ? prevPending - amount : 0n;
+    if (newPending > 0n) {
+      this.pendingOutgoing.set(from, newPending);
+    } else {
+      this.pendingOutgoing.delete(from);
+    }
   }
 
   // ── Withdrawal lock ──
@@ -245,7 +266,7 @@ export class Ledger {
     return {
       address,
       available: this.balances.get(address) ?? 0n,
-      pendingOutgoing: 0n, // TODO: track pending batch amounts
+      pendingOutgoing: this.pendingOutgoing.get(address) ?? 0n,
       totalDeposited: this.totalDeposited.get(address) ?? 0n,
       totalSpent: this.totalSpent.get(address) ?? 0n,
     };
@@ -258,6 +279,7 @@ export class Ledger {
   get totalDeposits(): bigint { return this._totalDeposits; }
   get totalDeducted(): bigint { return this._totalDeducted; }
   get accountCount(): number { return this.balances.size; }
+  get nonceCount(): number { return this.usedNonces.size; }
 
   // ── Serialization (for persistence) ──
 
@@ -313,19 +335,52 @@ export class Ledger {
   // ── Nonce cleanup (prevent unbounded memory growth) ──
 
   /**
-   * Prune old nonces. Call periodically.
-   * In production, nonces should include a timestamp prefix
-   * so we can prune by age.
+   * Check the fundamental ledger invariant:
+   *   sum(all balances) + sum(all totalSpent) == sum(all totalDeposited)
+   * Returns null if valid, or an error message if violated.
    */
-  pruneNonces(maxSize: number = 1_000_000): void {
-    if (this.usedNonces.size > maxSize) {
-      // Simple strategy: clear all and rely on validBefore expiry
-      // In production, use a time-bucketed approach
-      const arr = Array.from(this.usedNonces);
-      const toRemove = arr.slice(0, arr.length - maxSize);
-      for (const n of toRemove) {
-        this.usedNonces.delete(n);
+  checkInvariant(): string | null {
+    let sumBalances = 0n;
+    let sumSpent = 0n;
+    let sumDeposited = 0n;
+
+    const allAddresses = new Set([
+      ...this.balances.keys(),
+      ...this.totalDeposited.keys(),
+      ...this.totalSpent.keys(),
+    ]);
+
+    for (const addr of allAddresses) {
+      sumBalances += this.balances.get(addr) ?? 0n;
+      sumSpent += this.totalSpent.get(addr) ?? 0n;
+      sumDeposited += this.totalDeposited.get(addr) ?? 0n;
+    }
+
+    // Invariant: deposited == remaining balance + spent
+    if (sumDeposited !== sumBalances + sumSpent) {
+      return (
+        `LEDGER INVARIANT VIOLATION: ` +
+        `totalDeposited(${sumDeposited}) != balances(${sumBalances}) + spent(${sumSpent}) ` +
+        `[diff=${sumDeposited - sumBalances - sumSpent}]`
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Prune expired nonces. Call periodically.
+   * Removes nonces whose validBefore timestamp has passed (+ grace period).
+   * Returns the number of nonces pruned.
+   */
+  pruneNonces(gracePeriodSec: number = 300): number {
+    const now = Math.floor(Date.now() / 1000);
+    let pruned = 0;
+    for (const [nonce, expiry] of this.usedNonces) {
+      if (expiry + gracePeriodSec < now) {
+        this.usedNonces.delete(nonce);
+        pruned++;
       }
     }
+    return pruned;
   }
 }

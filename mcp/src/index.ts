@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CyberNanoPay MCP Server
+ * NanoPay MCP Server
  *
  * Gives AI agents gas-free nanopayment capabilities on TON.
  * Works alongside Agentic Wallets — agent uses agentic wallet for on-chain ops,
@@ -13,6 +13,9 @@
  *   nano_history       — View payment history
  *   nano_receipt       — Get a TEE-signed receipt
  *   nano_attestation   — Verify TEE attestation
+ *   nano_flush         — Trigger batch settlement (settle pending payments on-chain)
+ *   nano_withdraw      — Request withdrawal (flush unsettled → prepare for on-chain withdraw)
+ *   nano_policy        — Get or set spending policy (limits, daily cap, HITL threshold)
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,23 +23,53 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import nacl from "tweetnacl";
 import { createHash } from "crypto";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 
 const TEE_URL = process.env.NANO_TEE_URL ?? "https://3c84244ec8585d9d81678e9f8933c2b63bbfe5cd-4030.dstack-pha-prod5.phala.network";
 const ADMIN_TOKEN = process.env.NANO_ADMIN_TOKEN ?? "";
 
 // ── Keypair management ──
 // Agent generates or loads a keypair for signing payments
+// Seed is persisted to ~/.cyberpay/agent-seed so address survives restarts
+
+const SEED_DIR = join(homedir(), ".cyberpay");
+const SEED_FILE = join(SEED_DIR, "agent-seed");
 
 let agentKeypair: nacl.SignKeyPair | null = null;
 
 function getOrCreateKeypair(): nacl.SignKeyPair {
   if (agentKeypair) return agentKeypair;
-  const seed = process.env.NANO_AGENT_SEED;
-  if (seed) {
-    agentKeypair = nacl.sign.keyPair.fromSeed(Buffer.from(seed, "hex"));
-  } else {
-    agentKeypair = nacl.sign.keyPair();
+
+  // Priority 1: env var
+  const envSeed = process.env.NANO_AGENT_SEED;
+  if (envSeed) {
+    agentKeypair = nacl.sign.keyPair.fromSeed(Buffer.from(envSeed, "hex"));
+    return agentKeypair;
   }
+
+  // Priority 2: persisted seed file
+  try {
+    const saved = readFileSync(SEED_FILE, "utf-8").trim();
+    if (saved.length === 64) {
+      agentKeypair = nacl.sign.keyPair.fromSeed(Buffer.from(saved, "hex"));
+      return agentKeypair;
+    }
+  } catch {
+    // File doesn't exist yet — will create below
+  }
+
+  // Priority 3: generate new and persist
+  const seed = nacl.randomBytes(32);
+  agentKeypair = nacl.sign.keyPair.fromSeed(seed);
+  try {
+    mkdirSync(SEED_DIR, { recursive: true });
+    writeFileSync(SEED_FILE, Buffer.from(seed).toString("hex"), { mode: 0o600 });
+  } catch {
+    // Non-fatal: agent works but address changes on restart
+  }
+
   return agentKeypair;
 }
 
@@ -50,14 +83,26 @@ function agentAddress(): string {
 }
 
 // ── Payment signing ──
+// Canonical message format must match tee/src/verifier.ts and sdk/src/message.ts exactly.
+// Format: "CyberGateway:v1:" + from_hash(32) + to_hash(32) + amount(16) + validBefore(8) + nonce(32)
+// Address hash: for raw "wc:hex" format, hash is the 32 bytes from the hex part.
+
+function parseAddressHash(addr: string): Buffer {
+  // Support raw format "0:hex..." (workchain:hash)
+  const parts = addr.split(":");
+  if (parts.length === 2 && parts[1].length === 64) {
+    return Buffer.from(parts[1], "hex");
+  }
+  // Fallback: treat entire string as hex (shouldn't happen with proper addresses)
+  throw new Error(`Unsupported address format: ${addr}`);
+}
 
 function signPayment(to: string, amount: bigint, nonce: string, validBefore: number): string {
   const kp = getOrCreateKeypair();
   const prefix = Buffer.from("CyberGateway:v1:");
-  const fromHash = Buffer.from(kp.publicKey.slice(0, 32));
-  // Parse "to" address hash
-  const toClean = to.startsWith("0:") ? to.slice(2) : to;
-  const toHash = Buffer.from(toClean.padEnd(64, "0").slice(0, 64), "hex");
+  const from = agentAddress();
+  const fromHash = parseAddressHash(from);
+  const toHash = parseAddressHash(to);
 
   const buf = Buffer.alloc(prefix.length + 32 + 32 + 16 + 8 + 32);
   let offset = 0;
@@ -124,7 +169,7 @@ server.tool("nano_balance", "Check nanopay balance for an address", {
 });
 
 // Tool: nano_deposit
-server.tool("nano_deposit", "Deposit funds into CyberNanoPay (simulated for testnet)", {
+server.tool("nano_deposit", "Deposit funds into NanoPay (simulated for testnet)", {
   amount: z.string().describe("Amount in USDT units (6 decimals). e.g. '10000000' = $10"),
   address: z.string().optional().describe("Depositor address. Defaults to agent's own address."),
 }, async ({ amount, address }) => {
@@ -189,6 +234,79 @@ server.tool("nano_receipt", "Get a TEE-signed payment receipt", {
 server.tool("nano_stats", "Get global protocol statistics", {}, async () => {
   const data = await teeRequest("/stats");
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+});
+
+// Tool: nano_flush
+server.tool("nano_flush", "Trigger batch settlement to chain (settles pending payments on-chain)", {}, async () => {
+  const data = await teeRequest("/flush", {
+    method: "POST",
+    headers: adminHeaders(),
+  });
+  return { content: [{ type: "text", text: `Settlement: ${JSON.stringify(data)}` }] };
+});
+
+// Tool: nano_flush
+server.tool("nano_flush", "Trigger batch settlement — settles pending offchain payments on-chain. Use before withdrawing.", {}, async () => {
+  const data = await teeRequest("/flush", {
+    method: "POST",
+    headers: adminHeaders(),
+  });
+  if (data.settled) {
+    return { content: [{ type: "text", text: "✓ Batch settled on-chain successfully" }] };
+  }
+  return { content: [{ type: "text", text: `Flush result: ${JSON.stringify(data)}` }] };
+});
+
+// Tool: nano_withdraw
+server.tool("nano_withdraw", "Request withdrawal — flushes unsettled payments for your address so funds can be withdrawn on-chain", {
+  address: z.string().optional().describe("Address to withdraw for. Defaults to agent's own."),
+}, async ({ address }) => {
+  const addr = address ?? agentAddress();
+  const data = await teeRequest("/flush-for-withdraw", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address: addr }),
+  });
+  if (data.error) {
+    return { content: [{ type: "text", text: `✗ Withdraw failed: ${data.error}` }] };
+  }
+  const balanceUsdt = Number(data.balance) / 1e6;
+  if (data.settled) {
+    return { content: [{ type: "text", text: `✓ Settlement complete. On-chain balance: ${balanceUsdt} USDT. You can now withdraw via the CyberGateway contract (InitiateWithdraw → wait cooldown → CompleteWithdraw).` }] };
+  }
+  return { content: [{ type: "text", text: `No pending payments to settle. Current balance: ${balanceUsdt} USDT. ${data.message ?? ""}` }] };
+});
+
+// Tool: nano_policy_get
+server.tool("nano_policy_get", "Get spending policy for an address (limits, daily cap, HITL threshold)", {
+  address: z.string().optional().describe("Address to check. Defaults to agent's own."),
+}, async ({ address }) => {
+  const addr = address ?? agentAddress();
+  const data = await teeRequest(`/policy/${addr}`);
+  if (!data.policy) {
+    return { content: [{ type: "text", text: `No spending policy set for ${addr}` }] };
+  }
+  const p = data.policy;
+  return { content: [{ type: "text", text: `Policy for ${addr}:\n  Spending Limit: ${Number(p.spendingLimit) / 1e6} USDT per tx\n  Daily Cap: ${Number(p.dailyCap) / 1e6} USDT/day\n  HITL Threshold: ${Number(p.hitlThreshold) / 1e6} USDT (requires human approval above this)` }] };
+});
+
+// Tool: nano_policy_set
+server.tool("nano_policy_set", "Set spending policy — per-transaction limit, daily cap, and HITL approval threshold", {
+  address: z.string().optional().describe("Address to set policy for. Defaults to agent's own."),
+  spendingLimit: z.string().describe("Max amount per transaction in USDT units (6 decimals). e.g. '5000000' = $5"),
+  dailyCap: z.string().describe("Max daily spending in USDT units. e.g. '50000000' = $50"),
+  hitlThreshold: z.string().describe("Payments above this require human approval. e.g. '1000000' = $1"),
+}, async ({ address, spendingLimit, dailyCap, hitlThreshold }) => {
+  const addr = address ?? agentAddress();
+  const data = await teeRequest("/policy", {
+    method: "POST",
+    headers: adminHeaders(),
+    body: JSON.stringify({ address: addr, spendingLimit, dailyCap, hitlThreshold }),
+  });
+  if (data.success) {
+    return { content: [{ type: "text", text: `✓ Policy set for ${addr}:\n  Spending Limit: ${Number(spendingLimit) / 1e6} USDT/tx\n  Daily Cap: ${Number(dailyCap) / 1e6} USDT/day\n  HITL Threshold: ${Number(hitlThreshold) / 1e6} USDT` }] };
+  }
+  return { content: [{ type: "text", text: `✗ Failed: ${data.error}` }] };
 });
 
 // ── Start ──

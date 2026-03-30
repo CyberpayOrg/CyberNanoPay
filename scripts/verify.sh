@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 ERRORS=0
 
-echo "=== CyberNanoPay Verify ==="
+echo "=== NanoPay Verify ==="
 
 # 0. 安全硬约束
 echo "[0/3] security lint..."

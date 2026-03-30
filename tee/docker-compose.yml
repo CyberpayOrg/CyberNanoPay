@@ -2,7 +2,7 @@
 # Deploy via: phala deploy -c docker-compose.yml
 services:
   tee:
-    image: 0xll/cyber-nano-pay-tee:v0.3.7
+    image: 0xll/cyber-nano-pay-tee:v0.4.0
     ports:
       - "4030:4030"
     volumes:

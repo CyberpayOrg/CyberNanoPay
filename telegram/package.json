@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/bot.ts",
     "build": "tsc",
-    "start": "node dist/bot.js"
+    "start": "node dist/bot.js",
+    "test": "jest"
   },
   "dependencies": {
     "grammy": "^1.30.0",
@@ -15,6 +16,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.19.0",
     "typescript": "^5"
   }

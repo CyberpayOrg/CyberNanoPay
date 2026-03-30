@@ -1,5 +1,5 @@
 /**
- * CyberNanoPay HTTP Gateway
+ * NanoPay HTTP Gateway
  *
  * x402-compatible HTTP gateway for sellers.
  * Sellers integrate this to accept nanopayments.
@@ -21,7 +21,49 @@ const PORT = parseInt(process.env.PORT ?? "4031");
 const TEE_URL = process.env.TEE_URL ?? "http://localhost:4030";
 const GATEWAY_ADDRESS = process.env.GATEWAY_ADDRESS ?? "";
 
-const app = new Hono();
+// ── Simple in-memory rate limiter ──
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX ?? "120"); // 120 req/min
+
+function rateLimit() {
+  return async (c: any, next: any) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+      ?? c.req.header("x-real-ip")
+      ?? "unknown";
+    const now = Date.now();
+    let entry = rateLimitMap.get(ip);
+
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitMap.set(ip, entry);
+    }
+
+    entry.count++;
+    c.header("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
+    c.header("X-RateLimit-Remaining", String(Math.max(0, RATE_LIMIT_MAX - entry.count)));
+
+    if (entry.count > RATE_LIMIT_MAX) {
+      return c.json({ error: "Too many requests" }, 429);
+    }
+
+    await next();
+  };
+}
+
+// Clean up stale entries every 5 minutes
+const cleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now >= entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 300_000);
+cleanupTimer.unref();
+
+export const app = new Hono();
+
+app.use("*", rateLimit());
 
 // ── x402 Middleware Factory ──
 
@@ -50,7 +92,7 @@ export function requirePayment(opts: {
             asset: "USDT",
             maxTimeoutSeconds: 345600,
             extra: {
-              name: "CyberNanoPayBatched",
+              name: "NanoPayBatched",
               version: "1",
               gatewayContract: GATEWAY_ADDRESS,
               teeEndpoint: TEE_URL,
@@ -180,8 +222,10 @@ app.get(
   }
 );
 
-// ── Start ──
+// ── Start (only when run directly) ──
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`[cyber-nano-pay] HTTP Gateway on http://localhost:${info.port}`);
-});
+if (require.main === module) {
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
+    console.log(`[cyber-nano-pay] HTTP Gateway on http://localhost:${info.port}`);
+  });
+}

@@ -28,7 +28,7 @@ function keypairToAddress(publicKey: Buffer): string {
 }
 
 async function main() {
-  console.log("=== CyberNanoPay E2E Test ===\n");
+  console.log("=== NanoPay E2E Test ===\n");
 
   // ── Setup: Generate test keypairs ──
 
@@ -204,9 +204,65 @@ async function main() {
   const elapsed = Date.now() - start;
   console.log(`   ${successCount}/100 succeeded in ${elapsed}ms (${(elapsed / 100).toFixed(1)}ms/payment)`);
 
-  // ── Step 8: Final stats ──
+  // ── Step 9: Policy set/get ──
 
-  console.log("\n9. Final stats...");
+  console.log("\n10. Setting spending policy...");
+  res = await fetch(`${TEE_URL}/policy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(ADMIN_TOKEN ? { Authorization: `Bearer ${ADMIN_TOKEN}` } : {}) },
+    body: JSON.stringify({
+      address: buyerAddress,
+      spendingLimit: "5000000",  // $5 per tx
+      dailyCap: "50000000",     // $50/day
+      hitlThreshold: "1000000", // $1 requires approval
+    }),
+  });
+  const policySetResult = await res.json();
+  console.log("   Set:", policySetResult);
+
+  console.log("\n11. Getting spending policy...");
+  res = await fetch(`${TEE_URL}/policy/${buyerAddress}`);
+  const policyGetResult = await res.json() as any;
+  console.log("   Get:", policyGetResult);
+  if (!policyGetResult.policy) {
+    console.error("   ✗ FAIL: policy not returned");
+  } else {
+    console.log("   ✓ Policy returned correctly");
+  }
+
+  // ── Step 10: Build withdraw tx ──
+
+  console.log("\n12. Building withdraw transaction payload...");
+  res = await fetch(`${TEE_URL}/build-withdraw-tx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      address: buyerAddress,
+      amount: "1000000", // $1
+    }),
+  });
+  const withdrawTx = await res.json() as any;
+  if (withdrawTx.initiate && withdrawTx.complete) {
+    console.log("   ✓ InitiateWithdraw payload:", withdrawTx.initiate.payload.substring(0, 40) + "...");
+    console.log("   ✓ CompleteWithdraw payload:", withdrawTx.complete.payload.substring(0, 40) + "...");
+    console.log("   Note:", withdrawTx.note);
+  } else {
+    console.log("   →", withdrawTx);
+  }
+
+  // ── Step 11: Flush-for-withdraw ──
+
+  console.log("\n13. Flush-for-withdraw...");
+  res = await fetch(`${TEE_URL}/flush-for-withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address: buyerAddress }),
+  });
+  console.log("   →", await res.json());
+
+  // ── Step 12: Final stats ──
+
+  console.log("\n14. Final stats...");
   res = await fetch(`${TEE_URL}/stats`);
   console.log("   →", await res.json());
 

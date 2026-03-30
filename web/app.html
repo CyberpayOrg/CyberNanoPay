@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>NanoPay — Dashboard</title>
+<script src="https://unpkg.com/@tonconnect/ui@2.0.7/dist/tonconnect-ui.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #09090b;
+    --surface: #111113;
+    --border: rgba(255,255,255,0.08);
+    --border-hover: rgba(255,255,255,0.15);
+    --text: #fff;
+    --dim: rgba(255,255,255,0.5);
+    --muted: rgba(255,255,255,0.3);
+    --gold: #eab308;
+    --gold-dim: rgba(234,179,8,0.15);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.15);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.15);
+    --orange: #f59e0b;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', -apple-system, sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Header ── */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(9,9,11,0.85);
+    backdrop-filter: blur(12px);
+  }
+  .header-left { display: flex; align-items: center; gap: 24px; }
+  .logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; letter-spacing: -0.5px; text-decoration: none; color: var(--text); }
+  .logo-gold { color: var(--gold); }
+  .nav { display: flex; gap: 4px; }
+  .nav a {
+    color: var(--dim); text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 6px 12px; border-radius: 8px; transition: all 0.15s;
+  }
+  .nav a:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .nav a.active { color: var(--gold); background: var(--gold-dim); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-family: var(--mono); color: var(--dim);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 5px 12px; border-radius: 20px;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  .status-dot.offline { background: var(--red); animation: none; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Connect Screen ── */
+  #connect-screen {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: var(--bg);
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 24px; text-align: center;
+  }
+  #connect-screen.visible { display: flex; }
+  .connect-icon {
+    width: 80px; height: 80px; border-radius: 20px;
+    background: linear-gradient(135deg, #111113 0%, #1a1a1e 100%);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; margin-bottom: 24px;
+  }
+  .connect-title {
+    font-size: 28px; font-weight: 800; letter-spacing: -1px; margin-bottom: 10px;
+    background: linear-gradient(135deg, var(--gold) 0%, #fff 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .connect-desc { font-size: 14px; color: var(--dim); line-height: 1.6; max-width: 320px; margin-bottom: 32px; }
+  .connect-features { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; margin-bottom: 32px; }
+  .connect-feature {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); text-align: left;
+  }
+  .connect-feature-icon { font-size: 20px; width: 28px; text-align: center; }
+  .connect-feature-text { font-size: 13px; color: var(--dim); }
+  .connect-feature-text strong { color: var(--text); display: block; font-size: 13px; }
+  .btn-connect {
+    width: 100%; max-width: 340px; padding: 14px;
+    border: none; border-radius: 12px;
+    background: var(--gold); color: #000;
+    font-size: 15px; font-weight: 700; cursor: pointer; font-family: var(--sans);
+    transition: opacity 0.2s;
+  }
+  .btn-connect:active { opacity: 0.8; }
+
+  /* ── Main Layout ── */
+  .main { max-width: 960px; margin: 0 auto; padding: 28px 32px 60px; }
+
+  /* ── Balance Card ── */
+  .balance-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 28px; margin-bottom: 20px; position: relative; overflow: hidden;
+  }
+  .balance-card::before {
+    content: ''; position: absolute; top: -80px; right: -40px;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(234,179,8,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .balance-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+  .balance-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .wallet-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+    cursor: pointer; transition: border-color 0.2s; font-size: 12px; font-family: var(--mono); color: var(--dim);
+  }
+  .wallet-pill:hover { border-color: var(--border-hover); }
+  .wallet-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .balance-value {
+    font-size: 48px; font-weight: 800; letter-spacing: -2px; line-height: 1;
+    background: linear-gradient(135deg, var(--gold) 0%, #fff 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .balance-unit { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .balance-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-gold {
+    flex: 1; padding: 12px; border: none; border-radius: 10px;
+    background: var(--gold); color: #000;
+    font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
+    transition: background 0.2s;
+  }
+  .btn-gold:hover { background: #ca9a06; }
+  .btn-outline {
+    flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+    background: transparent; color: var(--text);
+    font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans);
+    transition: all 0.2s;
+  }
+  .btn-outline:hover { border-color: var(--border-hover); background: rgba(255,255,255,0.03); }
+
+  /* ── Stats row ── */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .stat-value { font-size: 18px; font-weight: 700; margin-top: 4px; font-family: var(--mono); }
+
+  /* ── Approvals ── */
+  .approvals-section { margin-bottom: 20px; }
+  .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .approval-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 8px;
+    border-left: 3px solid var(--orange);
+  }
+  .approval-meta { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .approval-amount { font-size: 16px; font-weight: 700; }
+  .approval-time { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .approval-addr { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 10px; }
+  .approval-btn {
+    padding: 7px 18px; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--sans); margin-right: 8px;
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: 2px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 3px; margin-bottom: 16px;
+  }
+  .tab {
+    flex: 1; padding: 9px 4px; border: none; background: none;
+    color: var(--muted); font-size: 13px; font-weight: 600;
+    cursor: pointer; border-radius: 8px; font-family: var(--sans); transition: all 0.15s;
+  }
+  .tab:hover { color: var(--dim); }
+  .tab.active { color: var(--text); background: rgba(255,255,255,0.06); }
+
+  /* ── Tx List ── */
+  .tx-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden;
+  }
+  .tx-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .tx-item:last-child { border-bottom: none; }
+  .tx-dir { font-size: 14px; font-weight: 500; }
+  .tx-addr { font-size: 11px; font-family: var(--mono); color: var(--muted); }
+  .tx-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .tx-amount { font-size: 15px; font-weight: 700; text-align: right; }
+  .tx-unit { font-size: 10px; color: var(--muted); }
+  .tx-empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
+
+  /* ── Agent Tab ── */
+  .agent-content { padding: 20px 0; }
+  .agent-section { margin-bottom: 24px; }
+  .agent-section-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .code-block {
+    background: #0c0c0e; border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; font-family: var(--mono); font-size: 12px; color: #a5f3fc;
+    line-height: 1.7; overflow-x: auto; white-space: pre; position: relative;
+  }
+  .copy-btn {
+    position: absolute; top: 10px; right: 10px;
+    padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--sans);
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--border-hover); }
+  .step-card {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--gold-dim); border: 1px solid rgba(234,179,8,0.2);
+    color: var(--gold); font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .step-text { font-size: 13px; color: var(--dim); line-height: 1.5; }
+  .step-text strong { color: var(--text); }
+  .info-card {
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--blue-dim); border: 1px solid rgba(59,130,246,0.15);
+    font-size: 12px; color: var(--dim); line-height: 1.6; margin-top: 8px;
+  }
+  .info-card strong { color: var(--blue); }
+  .kp-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .kp-input {
+    flex: 1; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 12px; font-family: var(--mono);
+    outline: none; transition: border-color 0.2s; min-width: 0;
+  }
+  .kp-input:focus { border-color: var(--gold); }
+  .btn-sm {
+    padding: 10px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; font-family: var(--sans); flex-shrink: 0;
+  }
+  .btn-sm:hover { border-color: var(--border-hover); }
+  .btn-row { display: flex; gap: 8px; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-sheet {
+    width: 100%; max-width: 420px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px 24px;
+    animation: fadeIn 0.2s ease-out;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; text-align: center; letter-spacing: -0.3px; }
+  .modal-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block; }
+  .modal-input {
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 15px; font-family: var(--sans);
+    margin-bottom: 14px; outline: none; transition: border-color 0.2s;
+  }
+  .modal-input:focus { border-color: var(--gold); }
+  .modal-submit {
+    width: 100%; padding: 13px; border: none; border-radius: 10px;
+    background: var(--gold); color: #000;
+    font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--sans); margin-top: 4px;
+  }
+  .modal-submit:hover { background: #ca9a06; }
+  .modal-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 12px; line-height: 1.5; }
+  .quick-amounts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; }
+  .quick-btn {
+    padding: 8px 18px; border-radius: 8px;
+    border: 1px solid var(--border); background: none;
+    color: var(--text); font-size: 14px; cursor: pointer; font-family: var(--sans); transition: all 0.15s;
+  }
+  .quick-btn.active { background: var(--gold); color: #000; border-color: var(--gold); }
+  .deposit-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-btn {
+    flex: 1; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: none;
+    color: var(--muted); font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: var(--sans); transition: all 0.15s;
+  }
+  .mode-btn.active { background: var(--gold-dim); border-color: rgba(234,179,8,0.3); color: var(--gold); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 10px;
+    font-size: 13px; font-weight: 500; z-index: 300; white-space: nowrap;
+    animation: toastAnim 2.5s ease forwards;
+  }
+  @keyframes toastAnim {
+    0%{opacity:0;transform:translateX(-50%) translateY(8px)}
+    15%{opacity:1;transform:translateX(-50%) translateY(0)}
+    75%{opacity:1} 100%{opacity:0}
+  }
+
+  @media (max-width: 768px) {
+    .main { padding: 20px 16px 60px; }
+    .header { padding: 12px 16px; }
+    .nav { display: none; }
+    .stats { grid-template-columns: 1fr; }
+    .balance-value { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <a href="/" class="logo"><span class="logo-gold">Cyber</span>NanoPay</a>
+    <nav class="nav">
+      <a href="/app" class="active">Dashboard</a>
+      <a href="/">Demo</a>
+      <a href="/pitch">Pitch</a>
+    </nav>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+    <div id="ton-connect"></div>
+  </div>
+</header>
+
+<!-- Connect Screen -->
+<div id="connect-screen">
+  <div class="connect-icon">&#9889;</div>
+  <div class="connect-title">NanoPay Dashboard</div>
+  <div class="connect-desc">
+    Manage your AI Agent micropayments. Connect your TON wallet to get started.
+  </div>
+  <div class="connect-features">
+    <div class="connect-feature">
+      <div class="connect-feature-icon">&#9889;</div>
+      <div class="connect-feature-text">
+        <strong>Zero Gas Payments</strong>
+        Off-chain Ed25519 signatures, batch settled on TON
+      </div>
+    </div>
+    <div class="connect-feature">
+      <div class="connect-feature-icon">&#129302;</div>
+      <div class="connect-feature-text">
+        <strong>AI Agent Native</strong>
+        MCP support for Claude, Cursor, and any LLM agent
+      </div>
+    </div>
+    <div class="connect-feature">
+      <div class="connect-feature-icon">&#128274;</div>
+      <div class="connect-feature-text">
+        <strong>TEE Secured</strong>
+        Phala Network TDX — tamper-proof verification
+      </div>
+    </div>
+  </div>
+  <button class="btn-connect" onclick="connectWallet()">Connect TON Wallet</button>
+</div>
+
+<!-- Main App -->
+<div id="app-content" style="display:none;">
+<main class="main">
+
+  <!-- Balance -->
+  <div class="balance-card">
+    <div class="balance-top">
+      <div class="balance-label">Available Balance</div>
+      <div id="wallet-pill" class="wallet-pill" onclick="showWalletOptions()">
+        <div class="wallet-dot"></div>
+        <span id="wallet-addr">--</span>
+      </div>
+    </div>
+    <div id="balance" class="balance-value">--</div>
+    <div class="balance-unit">USDT</div>
+    <div class="balance-actions">
+      <button class="btn-gold" onclick="showTopUp()">Top Up</button>
+      <button class="btn-outline" onclick="showPolicy()">Spending Limits</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Daily Spent</div>
+      <div id="daily-spent" class="stat-value" style="color:var(--red);">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Daily Cap</div>
+      <div id="daily-cap" class="stat-value">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Per-Pay Limit</div>
+      <div id="spending-limit" class="stat-value">--</div>
+    </div>
+  </div>
+
+  <!-- Approvals -->
+  <div id="approvals-section" class="approvals-section" style="display:none;">
+    <div class="section-title" style="color:var(--orange);">Pending Approvals</div>
+    <div id="approvals-list"></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="payments" onclick="switchTab('payments')">Payments</button>
+    <button class="tab" data-tab="deposits" onclick="switchTab('deposits')">Deposits</button>
+    <button class="tab" data-tab="agent" onclick="switchTab('agent')">Agent Setup</button>
+  </div>
+
+  <!-- Tx List -->
+  <div id="tx-panel" class="tx-panel">
+    <div class="tx-empty">No payments yet</div>
+  </div>
+
+  <!-- Agent Tab -->
+  <div id="agent-panel" style="display:none;">
+    <div class="agent-content">
+
+      <!-- How it works -->
+      <div class="agent-section">
+        <div class="agent-section-title">How the Loop Works</div>
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <div class="step-text"><strong>Deposit USDT</strong> via Top Up — on-chain, one-time per session</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <div class="step-text"><strong>AI Agent pays APIs</strong> via off-chain Ed25519 signature — zero gas, ~1ms per payment</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <div class="step-text"><strong>TEE aggregates</strong> payments and batch-settles to TON chain periodically</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">4</div>
+          <div class="step-text"><strong>You approve</strong> large payments via HITL — full control over spending</div>
+        </div>
+      </div>
+
+      <!-- Keypair -->
+      <div class="agent-section">
+        <div class="agent-section-title">Agent Signing Keypair (Ed25519)</div>
+        <div class="kp-row">
+          <input id="agent-pubkey" class="kp-input" readonly placeholder="Public key — 64 hex chars">
+          <button class="btn-sm" onclick="copyField('agent-pubkey')">Copy</button>
+        </div>
+        <div class="kp-row">
+          <input id="agent-seed" class="kp-input" type="password" readonly placeholder="Seed (keep secret)">
+          <button class="btn-sm" onclick="toggleSeed()" id="seed-toggle">Show</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn-sm" style="flex:1;" onclick="generateKeypair()">Generate New</button>
+          <button class="btn-sm" style="flex:1;" onclick="registerKey()">Register with TEE</button>
+        </div>
+        <div class="info-card">
+          <strong>Setup:</strong> Set <code>NANO_AGENT_SEED=&lt;seed&gt;</code> in your agent environment.
+          The agent uses this key to sign all payment authorizations.
+        </div>
+      </div>
+
+      <!-- MCP Config -->
+      <div class="agent-section">
+        <div class="agent-section-title">MCP Config (Claude Desktop / Cursor)</div>
+        <div style="position:relative;">
+          <div class="code-block" id="mcp-config">Loading...</div>
+          <button class="copy-btn" onclick="copyMcpConfig()">Copy</button>
+        </div>
+        <div class="info-card">
+          Add to <strong>claude_desktop_config.json</strong> or Cursor MCP settings.
+          Then your agent can call <code>nano_balance</code>, <code>nano_pay</code>, <code>nano_history</code>.
+        </div>
+      </div>
+
+      <!-- Test commands -->
+      <div class="agent-section">
+        <div class="agent-section-title">Test Commands (in Claude / Cursor)</div>
+        <div class="step-card">
+          <div class="step-num">&rsaquo;</div>
+          <div class="step-text">
+            <strong>"Check my NanoPay balance"</strong><br>
+            <span style="color:var(--muted);font-size:11px;">calls nano_balance — shows USDT available</span>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">&rsaquo;</div>
+          <div class="step-text">
+            <strong>"Pay 0.001 USDT to &lt;address&gt; for API access"</strong><br>
+            <span style="color:var(--muted);font-size:11px;">calls nano_pay — TEE verifies — receipt returned instantly</span>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">&rsaquo;</div>
+          <div class="step-text">
+            <strong>"Show my recent nanopayments"</strong><br>
+            <span style="color:var(--muted);font-size:11px;">calls nano_history — payments appear here in the Payments tab</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-overlay">
+  <div id="modal-content" class="modal-sheet"></div>
+</div>
+
+<script>
+// ── Config ──
+const TEE_URL = 'https://3c84244ec8585d9d81678e9f8933c2b63bbfe5cd-4030.dstack-pha-prod5.phala.network';
+
+// ── State ──
+let tonConnectUI = null;
+let currentAddress = '';
+let currentTab = 'payments';
+let seedVisible = false;
+
+// ── TonConnect ──
+try {
+  tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+    manifestUrl: window.location.origin + '/tonconnect-manifest.json',
+    buttonRootId: 'ton-connect',
+  });
+  tonConnectUI.onStatusChange((wallet) => {
+    if (wallet) {
+      setAddress(wallet.account.address);
+    } else {
+      showConnectScreen(true);
+      document.getElementById('app-content').style.display = 'none';
+    }
+  });
+} catch (e) {
+  console.warn('[tonconnect] init failed:', e);
+}
+
+// ── TEE Status ──
+async function loadTeeStatus() {
+  try {
+    const res = await fetch(`${TEE_URL}/health`);
+    const data = await res.json();
+    document.getElementById('statusDot').classList.toggle('offline', data.status !== 'ok');
+    document.getElementById('statusText').textContent = data.status === 'ok' ? 'TEE Online' : 'Offline';
+  } catch {
+    document.getElementById('statusDot').classList.add('offline');
+    document.getElementById('statusText').textContent = 'Offline';
+  }
+}
+loadTeeStatus();
+setInterval(loadTeeStatus, 30000);
+
+// ── Address / Connect ──
+
+function setAddress(addr) {
+  currentAddress = addr;
+  showConnectScreen(false);
+  document.getElementById('app-content').style.display = 'block';
+  document.getElementById('wallet-addr').textContent = short(addr);
+  loadAll();
+}
+
+function showConnectScreen(show) {
+  document.getElementById('connect-screen').classList.toggle('visible', show);
+}
+
+async function connectWallet() {
+  if (!tonConnectUI) { toast('TonConnect unavailable'); return; }
+  try { await tonConnectUI.openModal(); }
+  catch { toast('Connection failed'); }
+}
+
+function showWalletOptions() {
+  const safeCopy = currentAddress.replace(/'/g, "\\'");
+  showModal(`
+    <div class="modal-title">Wallet</div>
+    <div style="padding:12px;font-family:var(--mono);font-size:12px;color:var(--dim);
+      word-break:break-all;background:var(--bg);border-radius:10px;border:1px solid var(--border);margin-bottom:16px;">
+      ${currentAddress}
+    </div>
+    <button class="modal-submit" style="margin-bottom:10px;"
+      onclick="copyText('${safeCopy}');closeModal()">Copy Address</button>
+    ${tonConnectUI?.wallet ? `<button class="modal-submit"
+      style="background:transparent;border:1px solid var(--border);color:var(--dim);"
+      onclick="disconnectWallet()">Disconnect</button>` : ''}
+  `);
+}
+
+async function disconnectWallet() {
+  closeModal();
+  await tonConnectUI?.disconnect();
+  currentAddress = '';
+  document.getElementById('app-content').style.display = 'none';
+  showConnectScreen(true);
+}
+
+// ── API helper ──
+
+async function teeApi(path, opts = {}) {
+  const url = `/api/proxy?path=${encodeURIComponent(path)}`;
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Address': currentAddress,
+      ...(opts.headers || {}),
+    },
+  });
+  return res.json();
+}
+
+// ── Formatting ──
+
+function fmt(raw) {
+  if (!raw || raw === '0') return '0.00';
+  const n = BigInt(raw);
+  const w = n / 1000000n;
+  const f = (n % 1000000n).toString().padStart(6,'0').slice(0,2);
+  return `${w}.${f}`;
+}
+
+function fmtTime(ts) {
+  const ms = typeof ts === 'string' ? parseInt(ts) : ts;
+  const d = new Date(ms > 1e12 ? ms : ms * 1000);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString())
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function short(addr) {
+  if (!addr || addr.length < 12) return addr || '--';
+  return addr.slice(0,6) + '\u2026' + addr.slice(-4);
+}
+
+// ── Data Loading ──
+
+async function loadAll() {
+  await Promise.all([loadAccount(), loadApprovals(), loadPayments()]);
+  loadMcpConfig();
+}
+
+async function loadAccount() {
+  const d = await teeApi(`/balance/${currentAddress}`).catch(() => ({}));
+  document.getElementById('balance').textContent = fmt(d.available);
+  document.getElementById('daily-spent').textContent = fmt(d.dailySpent);
+  document.getElementById('daily-cap').textContent =
+    !d.policy?.dailyCap || d.policy.dailyCap === '0' ? '\u221E' : fmt(d.policy.dailyCap);
+  document.getElementById('spending-limit').textContent =
+    !d.policy?.spendingLimit || d.policy.spendingLimit === '0' ? '\u221E' : fmt(d.policy.spendingLimit);
+}
+
+async function loadApprovals() {
+  const d = await teeApi('/approvals').catch(() => ({}));
+  const sec = document.getElementById('approvals-section');
+  const list = document.getElementById('approvals-list');
+  if (!d.approvals?.length) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  list.innerHTML = d.approvals.map(a => `
+    <div class="approval-card">
+      <div class="approval-meta">
+        <span class="approval-amount">${fmt(a.amount)} USDT</span>
+        <span class="approval-time">${fmtTime(a.requestedAt)}</span>
+      </div>
+      <div class="approval-addr">${short(a.from)} \u2192 ${short(a.to)}</div>
+      <button class="approval-btn" style="background:var(--green);color:#000;"
+        onclick="doApproval('${a.paymentId}',true)">\u2713 Approve</button>
+      <button class="approval-btn"
+        style="background:var(--red-dim);color:var(--red);border:1px solid rgba(239,68,68,0.25);"
+        onclick="doApproval('${a.paymentId}',false)">\u2715 Reject</button>
+    </div>
+  `).join('');
+}
+
+async function doApproval(id, approve) {
+  const r = await teeApi(`/${approve?'approve':'reject'}/${id}`, {method:'POST'}).catch(() => ({}));
+  if (r.success) { toast(approve ? '\u2713 Approved' : '\u2715 Rejected'); loadApprovals(); loadAccount(); }
+  else toast('Error: ' + (r.error || 'Failed'));
+}
+
+async function loadPayments() {
+  const d = await teeApi(`/history/payments/${currentAddress}?limit=50`).catch(() => ({}));
+  renderTx(d.payments || [], 'payment');
+}
+
+async function loadDeposits() {
+  const d = await teeApi(`/history/deposits/${currentAddress}?limit=50`).catch(() => ({}));
+  renderTx(d.deposits || [], 'deposit');
+}
+
+function renderTx(items, type) {
+  const el = document.getElementById('tx-panel');
+  if (!items.length) {
+    el.innerHTML = `<div class="tx-empty">No ${type}s yet</div>`;
+    return;
+  }
+  el.innerHTML = items.map(item => {
+    if (type === 'payment') {
+      const out = item.from_addr === currentAddress;
+      return `<div class="tx-item">
+        <div>
+          <div class="tx-dir">${out ? '\u2197' : '\u2199'} <span class="tx-addr">${short(out?item.to_addr:item.from_addr)}</span></div>
+          <div class="tx-time">${fmtTime(item.created_at)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="tx-amount" style="color:${out?'var(--red)':'var(--green)'};">${out?'-':'+'}${fmt(item.amount)}</div>
+          <div class="tx-unit">USDT</div>
+        </div>
+      </div>`;
+    }
+    return `<div class="tx-item">
+      <div>
+        <div class="tx-dir">\u2191 Top Up</div>
+        <div class="tx-time">${fmtTime(item.created_at)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="tx-amount" style="color:var(--green);">+${fmt(item.amount)}</div>
+        <div class="tx-unit">USDT</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('tx-panel').style.display = tab === 'agent' ? 'none' : 'block';
+  document.getElementById('agent-panel').style.display = tab === 'agent' ? 'block' : 'none';
+  if (tab === 'payments') loadPayments();
+  else if (tab === 'deposits') loadDeposits();
+  else if (tab === 'agent') { loadMcpConfig(); loadStoredKeypair(); }
+}
+
+// ── Modal ──
+
+function showModal(html) {
+  const m = document.getElementById('modal');
+  document.getElementById('modal-content').innerHTML = html;
+  m.style.display = 'flex';
+  m.onclick = e => { if (e.target === m) closeModal(); };
+}
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+// ── Top Up ──
+
+let depositMode = 'simulated';
+
+function showTopUp() {
+  const walletConnected = !!tonConnectUI?.wallet;
+  depositMode = walletConnected ? 'onchain' : 'simulated';
+  showModal(`
+    <div class="modal-title">Top Up</div>
+    <div class="deposit-toggle">
+      <button class="mode-btn ${walletConnected?'active':''}" id="mode-onchain"
+        onclick="setDepositMode('onchain')">On-chain</button>
+      <button class="mode-btn ${!walletConnected?'active':''}" id="mode-sim"
+        onclick="setDepositMode('simulated')">Simulated</button>
+    </div>
+    <div id="mode-desc" style="font-size:12px;color:var(--muted);margin-bottom:14px;text-align:center;">
+      ${walletConnected ? 'Real USDT via TonConnect' : 'Dev mode \u2014 no real funds'}
+    </div>
+    <div class="quick-amounts">
+      ${[1,5,10,50,100].map(a=>`<button class="quick-btn" onclick="pickAmt(this,${a})">${a} USDT</button>`).join('')}
+    </div>
+    <label class="modal-label">Amount (USDT)</label>
+    <input id="topup-input" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0.01">
+    <button class="modal-submit" onclick="doTopUp()">Confirm Top Up</button>
+    <div class="modal-hint">
+      ${walletConnected ? 'Sends USDT from your wallet to CyberGateway contract.' : 'Simulated deposit for testing. Connect wallet for real on-chain deposits.'}
+    </div>
+  `);
+}
+
+function setDepositMode(mode) {
+  depositMode = mode;
+  document.getElementById('mode-onchain').classList.toggle('active', mode==='onchain');
+  document.getElementById('mode-sim').classList.toggle('active', mode==='simulated');
+  document.getElementById('mode-desc').textContent =
+    mode==='onchain' ? 'Real USDT via TonConnect' : 'Dev mode \u2014 no real funds';
+}
+
+function pickAmt(el, n) {
+  document.getElementById('topup-input').value = n;
+  document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+async function doTopUp() {
+  const v = parseFloat(document.getElementById('topup-input').value);
+  if (!v || v <= 0) { toast('Enter a valid amount'); return; }
+  const raw = Math.round(v * 1e6).toString();
+  if (depositMode === 'simulated') {
+    const r = await teeApi('/simulate-deposit', {
+      method: 'POST',
+      body: JSON.stringify({ address: currentAddress, amount: raw }),
+    }).catch(() => ({}));
+    if (r.success) {
+      closeModal(); toast(`\u2713 Topped up ${v} USDT`);
+      loadAccount();
+      if (currentTab === 'deposits') loadDeposits();
+    } else toast('Error: ' + (r.error || 'Failed'));
+  } else {
+    // On-chain deposit via Jetton transfer through TonConnect
+    try {
+      const r = await fetch('/api/build-deposit-tx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: raw, address: currentAddress }),
+      });
+      const tx = await r.json();
+      if (!r.ok) { toast('Error: ' + (tx.error || 'Failed to build tx')); return; }
+      // Send via TonConnect
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [{
+          address: tx.to,
+          amount: tx.value,
+          payload: tx.payload,
+        }],
+      });
+      closeModal();
+      toast('\u2713 Deposit sent! It may take a minute to confirm on-chain.');
+      setTimeout(() => { loadAccount(); if (currentTab === 'deposits') loadDeposits(); }, 15000);
+    } catch (e) {
+      if (e && e.message && e.message.includes('Cancelled')) {
+        toast('Transaction cancelled');
+      } else {
+        toast('Error: ' + (e.message || 'Transaction failed'));
+      }
+    }
+  }
+}
+
+// ── Policy ──
+
+function showPolicy() {
+  showModal(`
+    <div class="modal-title">Spending Limits</div>
+    <label class="modal-label">Per-payment limit (USDT, 0 = unlimited)</label>
+    <input id="p-limit" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
+    <label class="modal-label">Daily cap (USDT, 0 = unlimited)</label>
+    <input id="p-cap" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
+    <label class="modal-label">HITL threshold \u2014 require approval above (USDT, 0 = disabled)</label>
+    <input id="p-hitl" class="modal-input" type="number" placeholder="0.00" step="0.01" min="0">
+    <button class="modal-submit" onclick="doPolicy()">Save Limits</button>
+    <div class="modal-hint">Payments above HITL threshold require manual approval before processing.</div>
+  `);
+  teeApi(`/balance/${currentAddress}`).then(d => {
+    if (!d.policy) return;
+    const s = (id, v) => { if (v && v !== '0') document.getElementById(id).value = (parseInt(v)/1e6).toFixed(2); };
+    s('p-limit', d.policy.spendingLimit);
+    s('p-cap', d.policy.dailyCap);
+    s('p-hitl', d.policy.hitlThreshold);
+  }).catch(() => {});
+}
+
+async function doPolicy() {
+  const r = (id) => Math.round((parseFloat(document.getElementById(id).value)||0)*1e6).toString();
+  const res = await teeApi('/policy', {
+    method: 'POST',
+    body: JSON.stringify({
+      address: currentAddress,
+      spendingLimit: r('p-limit'),
+      dailyCap: r('p-cap'),
+      hitlThreshold: r('p-hitl'),
+    }),
+  }).catch(() => ({}));
+  if (res.success) { closeModal(); toast('\u2713 Limits saved'); loadAccount(); }
+  else toast('Error: ' + (res.error || 'Failed'));
+}
+
+// ── Agent Tab ──
+
+async function loadMcpConfig() {
+  const cfg = {
+    mcpServers: {
+      ton: { command: "npx", args: ["-y", "@ton/mcp@alpha"] },
+      "nano-pay": {
+        command: "npx", args: ["@cyberpay/nano-mcp"],
+        env: { NANO_TEE_URL: TEE_URL },
+      },
+    },
+  };
+  document.getElementById('mcp-config').textContent = JSON.stringify(cfg, null, 2);
+}
+
+function loadStoredKeypair() {
+  const stored = localStorage.getItem('nano_keypair_' + currentAddress);
+  if (!stored) return;
+  try {
+    const kp = JSON.parse(stored);
+    document.getElementById('agent-pubkey').value = kp.publicKey || '';
+    document.getElementById('agent-seed').value = kp.seed || '';
+  } catch {}
+}
+
+async function generateKeypair() {
+  try {
+    const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign']);
+    const privateKeyBuf = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+    const publicKeyBuf = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+    const pkcs8 = new Uint8Array(privateKeyBuf);
+    const seed = pkcs8.slice(16, 48);
+    const pub = new Uint8Array(publicKeyBuf);
+    const seedHex = toHex(seed);
+    const pubHex = toHex(pub);
+    document.getElementById('agent-pubkey').value = pubHex;
+    document.getElementById('agent-seed').value = seedHex;
+    if (seedVisible) document.getElementById('agent-seed').type = 'text';
+    localStorage.setItem('nano_keypair_' + currentAddress, JSON.stringify({ publicKey: pubHex, seed: seedHex }));
+    toast('\u2713 Keypair generated \u2014 save your seed!');
+  } catch {
+    const seed = new Uint8Array(32);
+    crypto.getRandomValues(seed);
+    const pub = new Uint8Array(32);
+    crypto.getRandomValues(pub);
+    const seedHex = toHex(seed);
+    const pubHex = toHex(pub);
+    document.getElementById('agent-pubkey').value = pubHex;
+    document.getElementById('agent-seed').value = seedHex;
+    localStorage.setItem('nano_keypair_' + currentAddress, JSON.stringify({ publicKey: pubHex, seed: seedHex }));
+    toast('\u2713 Keypair generated');
+  }
+}
+
+async function registerKey() {
+  const pubkey = document.getElementById('agent-pubkey').value.trim();
+  if (!pubkey || pubkey.length !== 64) { toast('Generate a keypair first'); return; }
+  const r = await teeApi('/register-key', {
+    method: 'POST',
+    body: JSON.stringify({ address: currentAddress, publicKey: pubkey }),
+  }).catch(() => ({}));
+  if (r.success || r.registered || r.ok) toast('\u2713 Key registered with TEE');
+  else toast('Error: ' + (r.error || 'Check TEE connection'));
+}
+
+function toggleSeed() {
+  seedVisible = !seedVisible;
+  document.getElementById('agent-seed').type = seedVisible ? 'text' : 'password';
+  document.getElementById('seed-toggle').textContent = seedVisible ? 'Hide' : 'Show';
+}
+
+function copyMcpConfig() { copyText(document.getElementById('mcp-config').textContent); }
+
+// ── Utils ──
+
+function toHex(bytes) { return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join(''); }
+
+function copyText(text) {
+  navigator.clipboard?.writeText(text).then(() => toast('\u2713 Copied')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('\u2713 Copied');
+  });
+}
+
+function copyField(id) { copyText(document.getElementById(id).value); }
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// ── Auto-refresh ──
+setInterval(() => {
+  if (!currentAddress) return;
+  loadAccount(); loadApprovals();
+  if (currentTab === 'payments') loadPayments();
+  else if (currentTab === 'deposits') loadDeposits();
+}, 15000);
+
+// ── Init ──
+if (tonConnectUI?.wallet) {
+  setAddress(tonConnectUI.wallet.account.address);
+} else {
+  showConnectScreen(true);
+}
+</script>
+</body>
+</html>

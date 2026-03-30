@@ -1,5 +1,5 @@
 /**
- * CyberNanoPay Telegram HITL Bot
+ * NanoPay Telegram HITL Bot
  *
  * Human-in-the-loop approval bot for large payments.
  *
@@ -35,9 +35,9 @@ const bot = new Bot(BOT_TOKEN);
 // /start command
 bot.command("start", (ctx) => {
   ctx.reply(
-    "🔐 CyberNanoPay HITL Bot\n\n" +
+    "🔐 NanoPay HITL Bot\n\n" +
     "I'll notify you when a large payment needs approval.\n" +
-    "Use /wallet to open your CyberNanoPay wallet.\n" +
+    "Use /wallet to open your NanoPay wallet.\n" +
     "Use /balance <address> to check balances.\n" +
     "Use /approvals to see pending approvals.\n" +
     "Use /policy <address> to check spending policy."
@@ -48,7 +48,7 @@ bot.command("start", (ctx) => {
 bot.command("wallet", (ctx) => {
   const addr = ctx.match?.trim() || "";
   const url = addr ? `${MINIAPP_URL}?address=${addr}` : MINIAPP_URL;
-  ctx.reply("💳 Open your CyberNanoPay wallet:", {
+  ctx.reply("💳 Open your NanoPay wallet:", {
     reply_markup: {
       inline_keyboard: [[
         { text: "💳 Open Wallet", web_app: { url } }
@@ -130,7 +130,7 @@ bot.command("stats", async (ctx) => {
     const res = await fetch(`${TEE_URL}/stats`);
     const data = await res.json() as any;
     ctx.reply(
-      `📊 CyberNanoPay Stats\n\n` +
+      `📊 NanoPay Stats\n\n` +
       `Total Deposits: ${data.totalDeposits}\n` +
       `Total Deducted: ${data.totalDeducted}\n` +
       `Accounts: ${data.accountCount}\n` +
@@ -183,7 +183,7 @@ bot.on("callback_query:data", async (ctx) => {
 
 // ── HTTP Server (receives notifications from TEE) ──
 
-const httpApp = new Hono();
+export const httpApp = new Hono();
 
 httpApp.get("/health", (c) => c.json({ status: "ok", service: "telegram-hitl" }));
 
@@ -227,7 +227,7 @@ httpApp.post("/notify", async (c) => {
   }
 });
 
-// ── Start both ──
+// ── Start both (only when run directly) ──
 
 async function main() {
   // Start Telegram bot (long polling)
@@ -241,7 +241,9 @@ async function main() {
   });
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}
 
 process.on("SIGINT", () => {
   bot.stop();

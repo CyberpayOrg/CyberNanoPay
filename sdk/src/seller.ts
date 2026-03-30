@@ -1,5 +1,5 @@
 /**
- * CyberNanoPay Seller SDK
+ * NanoPay Seller SDK
  *
  * For merchants/API providers to:
  * 1. Verify incoming payments via the TEE
@@ -14,7 +14,7 @@ export interface SellerConfig {
   gatewayUrl: string;
 }
 
-export class CyberNanoPaySeller {
+export class NanoPaySeller {
   private config: SellerConfig;
 
   constructor(config: SellerConfig) {
@@ -37,14 +37,20 @@ export class CyberNanoPaySeller {
     error?: string;
     confirmationId?: string;
     remainingBalance?: string;
-    receipt?: any;
+    receipt?: Record<string, unknown>;
   }> {
     const res = await fetch(`${this.config.gatewayUrl}/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(authorization),
     });
-    return res.json() as any;
+    return res.json() as Promise<{
+      success: boolean;
+      error?: string;
+      confirmationId?: string;
+      remainingBalance?: string;
+      receipt?: Record<string, unknown>;
+    }>;
   }
 
   /**
@@ -60,7 +66,13 @@ export class CyberNanoPaySeller {
     const res = await fetch(
       `${this.config.gatewayUrl}/balance/${this.config.address}`
     );
-    return res.json() as any;
+    return res.json() as Promise<{
+      available: string;
+      settled: string;
+      unsettled: string;
+      totalDeposited: string;
+      totalSpent: string;
+    }>;
   }
 
   /**
@@ -72,24 +84,28 @@ export class CyberNanoPaySeller {
     timestamp: number;
   }> {
     const res = await fetch(`${this.config.gatewayUrl}/attestation`);
-    return res.json() as any;
+    return res.json() as Promise<{
+      teePublicKey: string;
+      platform: string;
+      timestamp: number;
+    }>;
   }
 
   /**
    * Get a receipt by confirmation ID (for dispute resolution / proof).
    */
-  async getReceipt(confirmationId: string): Promise<any> {
+  async getReceipt(confirmationId: string): Promise<Record<string, unknown>> {
     const res = await fetch(`${this.config.gatewayUrl}/receipt/${confirmationId}`);
-    return res.json() as any;
+    return res.json() as Promise<Record<string, unknown>>;
   }
 
   /**
    * Get all receipts for this seller address.
    */
-  async getReceipts(limit = 50): Promise<{ receipts: any[] }> {
+  async getReceipts(limit = 50): Promise<{ receipts: Record<string, unknown>[] }> {
     const res = await fetch(
       `${this.config.gatewayUrl}/receipts/${this.config.address}?role=to&limit=${limit}`
     );
-    return res.json() as any;
+    return res.json() as Promise<{ receipts: Record<string, unknown>[] }>;
   }
 }

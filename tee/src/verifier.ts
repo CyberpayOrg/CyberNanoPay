@@ -3,6 +3,10 @@
  *
  * Verifies payment authorizations signed by TON wallets.
  *
+ * IMPORTANT: The message building logic here MUST match sdk/src/message.ts exactly.
+ * Any divergence will cause signature verification failures.
+ * Run the cross-validation test (test/message-compat.test.ts) to verify consistency.
+ *
  * Authorization message format (for signing):
  *   prefix:      "CyberGateway:v1:" (ASCII)
  *   from:        32 bytes (TON address hash)

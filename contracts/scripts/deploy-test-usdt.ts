@@ -60,7 +60,7 @@ async function main() {
   dict.set(sha256_sync("name"), snakeCell("TestUSDT"));
   dict.set(sha256_sync("symbol"), snakeCell("tUSDT"));
   dict.set(sha256_sync("decimals"), snakeCell("6"));
-  dict.set(sha256_sync("description"), snakeCell("Test USDT for CyberNanoPay testnet"));
+  dict.set(sha256_sync("description"), snakeCell("Test USDT for NanoPay testnet"));
   dict.set(sha256_sync("image"), snakeCell("https://tether.to/images/logoCircle.png"));
 
   const content = beginCell()

@@ -1,4 +1,4 @@
-# CyberNanoPay — Agent Guide
+# NanoPay — Agent Guide
 
 TON 链上 AI Agent 微支付协议。7 个包的 monorepo。
 

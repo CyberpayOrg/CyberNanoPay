@@ -13,6 +13,53 @@
 import Database from "better-sqlite3";
 import path from "path";
 
+/** Row types for query results */
+interface PaymentRow {
+  id: number;
+  confirmation_id: string;
+  from_addr: string;
+  to_addr: string;
+  amount: string;
+  nonce: string;
+  status: string;
+  created_at: string;
+}
+
+interface ApprovalRow {
+  id: number;
+  payment_id: string;
+  from_addr: string;
+  to_addr: string;
+  amount: string;
+  status: string;
+  requested_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+}
+
+interface DepositRow {
+  id: number;
+  address: string;
+  amount: string;
+  created_at: string;
+}
+
+interface LedgerStateRow {
+  address: string;
+  balance: string;
+  settled_balance: string;
+  total_deposited: string;
+  total_spent: string;
+  updated_at: string;
+}
+
+interface ListenerCursorRow {
+  id: number;
+  last_lt: string;
+  last_hash: string | null;
+  updated_at: string;
+}
+
 const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "gateway.db");
 
 export class Store {
@@ -99,16 +146,16 @@ export class Store {
     ).run(confirmationId, from, to, amount.toString(), nonce);
   }
 
-  getPayments(address: string, limit = 50): any[] {
+  getPayments(address: string, limit = 50): PaymentRow[] {
     return this.db.prepare(
       `SELECT * FROM payments WHERE from_addr = ? OR to_addr = ? ORDER BY id DESC LIMIT ?`
-    ).all(address, address, limit);
+    ).all(address, address, limit) as PaymentRow[];
   }
 
-  getRecentPayments(limit = 50): any[] {
+  getRecentPayments(limit = 50): PaymentRow[] {
     return this.db.prepare(
       `SELECT * FROM payments ORDER BY id DESC LIMIT ?`
-    ).all(limit);
+    ).all(limit) as PaymentRow[];
   }
 
   // ── Approvals ──
@@ -125,10 +172,10 @@ export class Store {
     ).run(status, decidedBy ?? null, paymentId);
   }
 
-  getApprovalHistory(limit = 50): any[] {
+  getApprovalHistory(limit = 50): ApprovalRow[] {
     return this.db.prepare(
       `SELECT * FROM approvals ORDER BY id DESC LIMIT ?`
-    ).all(limit);
+    ).all(limit) as ApprovalRow[];
   }
 
   // ── Policies ──
@@ -148,25 +195,25 @@ export class Store {
     ).run(address, amount.toString());
   }
 
-  getDepositHistory(address: string, limit = 50): any[] {
+  getDepositHistory(address: string, limit = 50): DepositRow[] {
     return this.db.prepare(
       `SELECT * FROM deposits WHERE address = ? ORDER BY id DESC LIMIT ?`
-    ).all(address, limit);
+    ).all(address, limit) as DepositRow[];
   }
 
   // ── Stats ──
 
   getPaymentCount(): number {
-    return (this.db.prepare(`SELECT COUNT(*) as cnt FROM payments`).get() as any).cnt;
+    return (this.db.prepare(`SELECT COUNT(*) as cnt FROM payments`).get() as { cnt: number }).cnt;
   }
 
   getApprovalCount(): { pending: number; approved: number; rejected: number } {
     const rows = this.db.prepare(
       `SELECT status, COUNT(*) as cnt FROM approvals GROUP BY status`
-    ).all() as any[];
+    ).all() as Array<{ status: string; cnt: number }>;
     const result = { pending: 0, approved: 0, rejected: 0 };
     for (const r of rows) {
-      if (r.status in result) (result as any)[r.status] = r.cnt;
+      if (r.status in result) result[r.status as keyof typeof result] = r.cnt;
     }
     return result;
   }
@@ -204,7 +251,7 @@ export class Store {
     totalDeposited: string;
     totalSpent: string;
   }> {
-    const rows = this.db.prepare(`SELECT * FROM ledger_state`).all() as any[];
+    const rows = this.db.prepare(`SELECT * FROM ledger_state`).all() as LedgerStateRow[];
     return rows.map((r) => ({
       address: r.address,
       balance: r.balance,
@@ -224,7 +271,7 @@ export class Store {
   }
 
   loadListenerCursor(): { lastLt: string; lastHash?: string } | null {
-    const row = this.db.prepare(`SELECT * FROM listener_cursor WHERE id = 1`).get() as any;
+    const row = this.db.prepare(`SELECT * FROM listener_cursor WHERE id = 1`).get() as ListenerCursorRow | undefined;
     if (!row) return null;
     return { lastLt: row.last_lt, lastHash: row.last_hash ?? undefined };
   }

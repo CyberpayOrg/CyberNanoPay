@@ -1,18 +1,16 @@
 /**
- * CyberNanoPay Buyer SDK
+ * NanoPay Buyer SDK
  *
  * For AI agents and buyers to:
- * 1. Deposit USDT into CyberNanoPay
+ * 1. Deposit USDT into NanoPay
  * 2. Sign payment authorizations (offchain, zero gas)
  * 3. Pay for resources via x402
  */
 
 import nacl from "tweetnacl";
 import { randomBytes } from "crypto";
-import { Address } from "@ton/core";
 import { sha256_sync } from "@ton/crypto";
-
-const MESSAGE_PREFIX = Buffer.from("CyberGateway:v1:");
+import { buildPaymentMessage } from "./message";
 
 export interface BuyerConfig {
   /** Buyer's Ed25519 keypair */
@@ -23,7 +21,7 @@ export interface BuyerConfig {
   gatewayUrl: string;
 }
 
-export class CyberNanoPayBuyer {
+export class NanoPayBuyer {
   private config: BuyerConfig;
 
   constructor(config: BuyerConfig) {
@@ -49,13 +47,13 @@ export class CyberNanoPayBuyer {
     const validBefore =
       Math.floor(Date.now() / 1000) + (params.validForSeconds ?? 300);
 
-    const message = this.buildMessage(
-      this.config.address,
-      params.to,
-      params.amount,
+    const message = buildPaymentMessage({
+      from: this.config.address,
+      to: params.to,
+      amount: params.amount,
       validBefore,
-      nonce
-    );
+      nonce,
+    });
 
     const messageHash = sha256_sync(message);
     const sig = nacl.sign.detached(
@@ -137,7 +135,13 @@ export class CyberNanoPayBuyer {
     const res = await fetch(
       `${this.config.gatewayUrl}/balance/${this.config.address}`
     );
-    return res.json() as any;
+    return res.json() as Promise<{
+      available: string;
+      settled: string;
+      unsettled: string;
+      totalDeposited: string;
+      totalSpent: string;
+    }>;
   }
 
   /**
@@ -147,48 +151,4 @@ export class CyberNanoPayBuyer {
     return Buffer.from(this.config.keypair.publicKey).toString("hex");
   }
 
-  private buildMessage(
-    from: string,
-    to: string,
-    amount: bigint,
-    validBefore: number,
-    nonce: string
-  ): Buffer {
-    const fromAddr = Address.parse(from);
-    const toAddr = Address.parse(to);
-
-    const buf = Buffer.alloc(MESSAGE_PREFIX.length + 32 + 32 + 16 + 8 + 32);
-    let offset = 0;
-
-    MESSAGE_PREFIX.copy(buf, offset);
-    offset += MESSAGE_PREFIX.length;
-
-    fromAddr.hash.copy(buf, offset);
-    offset += 32;
-
-    toAddr.hash.copy(buf, offset);
-    offset += 32;
-
-    const amountBuf = Buffer.alloc(16);
-    let amt = amount;
-    for (let i = 15; i >= 0; i--) {
-      amountBuf[i] = Number(amt & 0xffn);
-      amt >>= 8n;
-    }
-    amountBuf.copy(buf, offset);
-    offset += 16;
-
-    const timeBuf = Buffer.alloc(8);
-    let ts = BigInt(validBefore);
-    for (let i = 7; i >= 0; i--) {
-      timeBuf[i] = Number(ts & 0xffn);
-      ts >>= 8n;
-    }
-    timeBuf.copy(buf, offset);
-    offset += 8;
-
-    Buffer.from(nonce, "hex").copy(buf, offset);
-
-    return buf;
-  }
 }

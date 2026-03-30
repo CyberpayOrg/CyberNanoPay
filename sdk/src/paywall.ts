@@ -1,11 +1,11 @@
 /**
- * CyberNanoPay Paywall Middleware
+ * NanoPay Paywall Middleware
  *
  * Drop-in middleware for API merchants. Supports Express, Hono, and generic HTTP.
  *
  * Usage (Express):
  *   import { createPaywall } from "@cyberpay/nano-sdk";
- *   const paywall = createPaywall({ merchantAddress: "EQxxx...", pricePerCall: 1000 });
+ *   const paywall = createPaywall({ merchantAddress: "EQxxx...", pricePerCall: 1000n });
  *   app.use("/api", paywall.express());
  *
  * Usage (Hono):
@@ -20,8 +20,8 @@ export interface PaywallConfig {
   teeEndpoint: string;
   /** Merchant's TON address (receives payments) */
   merchantAddress: string;
-  /** Price per API call in USDT units (6 decimals). 1000000 = $1, 1000 = $0.001 */
-  pricePerCall: number;
+  /** Price per API call in USDT units (6 decimals). 1000000n = $1, 1000n = $0.001 */
+  pricePerCall: bigint;
   /** Optional: custom payment scheme name */
   scheme?: string;
 }
@@ -29,7 +29,7 @@ export interface PaywallConfig {
 export interface PaywallResult {
   paid: boolean;
   confirmationId?: string;
-  receipt?: any;
+  receipt?: Record<string, unknown>;
   error?: string;
 }
 
@@ -77,7 +77,7 @@ export function createPaywall(config: PaywallConfig) {
           signature: auth.signature,
         }),
       });
-      const result = await res.json() as any;
+      const result = await res.json() as { success?: boolean; confirmationId?: string; receipt?: Record<string, unknown>; error?: string };
 
       if (result.success) {
         return { paid: true, confirmationId: result.confirmationId, receipt: result.receipt };

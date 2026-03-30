@@ -1,4 +1,4 @@
-# CyberNanoPay TEE — Phala Cloud CVM Deployment
+# NanoPay TEE — Phala Cloud CVM Deployment
 FROM node:20-slim AS builder
 
 WORKDIR /app

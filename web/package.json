@@ -1,0 +1,8 @@
+{
+  "name": "@cyber-nano-pay/web",
+  "private": true,
+  "dependencies": {
+    "@ton/core": "~0",
+    "@ton/ton": "^13.11.2"
+  }
+}

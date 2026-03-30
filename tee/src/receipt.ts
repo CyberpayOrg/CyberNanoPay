@@ -56,7 +56,7 @@ export interface ReceiptPayload {
 /** Complete COSE_Sign1-style receipt envelope */
 export interface StandardReceipt {
   /** Version identifier */
-  version: "CyberNanoPay:receipt:v2";
+  version: "NanoPay:receipt:v2";
   /** Protected header (signed) */
   protected: ReceiptHeader;
   /** Receipt payload */
@@ -114,7 +114,7 @@ export class ReceiptBuilder {
     const signature = this._sign(header, payload);
 
     return {
-      version: "CyberNanoPay:receipt:v2",
+      version: "NanoPay:receipt:v2",
       protected: header,
       payload,
       signature,

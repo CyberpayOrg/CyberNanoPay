@@ -1,4 +1,4 @@
-# Architecture — CyberNanoPay
+# Architecture — NanoPay
 
 ## System Overview
 

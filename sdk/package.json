@@ -1,15 +1,25 @@
 {
   "name": "@cyberpay/nano-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "NanoPay SDK — gas-free nanopayments on TON for AI agents and API merchants",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberpayOrg/NanoPay",
+    "directory": "sdk"
+  },
+  "keywords": ["ton", "micropayments", "nanopay", "ai-agent", "x402", "tee", "usdt"],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "jest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@ton/core": "~0",
@@ -18,7 +28,10 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "typescript": "^5"
   }
 }

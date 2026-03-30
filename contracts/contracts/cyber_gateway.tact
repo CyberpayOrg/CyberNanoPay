@@ -192,6 +192,25 @@ struct DelegateRemovedEvent {
     delegate: Address;
 }
 
+struct TeeKeySetEvent {
+    old_pubkey: Int as uint256;
+    new_pubkey: Int as uint256;
+}
+
+struct CooldownSetEvent {
+    old_seconds: Int as uint32;
+    new_seconds: Int as uint32;
+}
+
+struct StoppedSetEvent {
+    stopped: Bool;
+}
+
+struct JettonRescuedEvent {
+    jetton_wallet: Address;
+    amount: Int as coins;
+}
+
 // ============================================
 // CyberGateway Contract
 // ============================================
@@ -792,7 +811,12 @@ contract CyberGateway with Deployable, Ownable, OwnableTransferable {
 
     receive(msg: SetTeeKey) {
         self.requireOwner();
+        let old_key: Int = self.tee_pubkey;
         self.tee_pubkey = msg.tee_pubkey;
+        emit(TeeKeySetEvent{
+            old_pubkey: old_key,
+            new_pubkey: msg.tee_pubkey
+        }.toCell());
         send(SendParameters{
             to: sender(), value: 0,
             mode: SendRemainingValue + SendIgnoreErrors, bounce: false
@@ -810,7 +834,12 @@ contract CyberGateway with Deployable, Ownable, OwnableTransferable {
 
     receive(msg: SetCooldown) {
         self.requireOwner();
+        let old_cd: Int = self.withdrawal_cooldown;
         self.withdrawal_cooldown = msg.seconds;
+        emit(CooldownSetEvent{
+            old_seconds: old_cd,
+            new_seconds: msg.seconds
+        }.toCell());
         send(SendParameters{
             to: sender(), value: 0,
             mode: SendRemainingValue + SendIgnoreErrors, bounce: false
@@ -820,6 +849,9 @@ contract CyberGateway with Deployable, Ownable, OwnableTransferable {
     receive(msg: SetStopped) {
         self.requireOwner();
         self.stopped = msg.stopped;
+        emit(StoppedSetEvent{
+            stopped: msg.stopped
+        }.toCell());
         send(SendParameters{
             to: sender(), value: 0,
             mode: SendRemainingValue + SendIgnoreErrors, bounce: false
@@ -828,6 +860,10 @@ contract CyberGateway with Deployable, Ownable, OwnableTransferable {
 
     receive(msg: RescueJetton) {
         self.requireOwner();
+        emit(JettonRescuedEvent{
+            jetton_wallet: msg.jetton_wallet,
+            amount: msg.amount
+        }.toCell());
         let emptyFwd: Slice = beginCell().storeUint(0, 1).endCell().beginParse();
         send(SendParameters{
             to: msg.jetton_wallet,

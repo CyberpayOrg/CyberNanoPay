@@ -1,6 +1,6 @@
-# CyberNanoPay — Agent Guide
+# NanoPay — Agent Guide
 
-TON 链上 AI Agent 微支付协议。7 个包的 monorepo。
+TON 链上 AI Agent 微支付协议。10 个包的 monorepo。
 
 ## Build & Test Commands
 
@@ -20,6 +20,9 @@ cd miniapp && npm run build
 # SDK
 cd sdk && npm run build
 
+# Web（静态演示页，无需编译）
+# open web/index.html 或部署到 Vercel
+
 # E2E 测试（需要 TEE 服务运行在 localhost:4030）
 cd test && npx tsx e2e.ts
 cd test && npx tsx x402-flow.ts
@@ -37,7 +40,10 @@ sdk        →  依赖 tweetnacl, @ton/core（不依赖其他包）
 tee        →  可引用 contracts/wrappers, sdk 的类型
 gateway    →  只通过 HTTP 调用 tee（不直接 import tee 代码）
 telegram   →  只通过 HTTP 调用 tee
-miniapp    →  只通过 HTTP 调用 tee
+miniapp    →  只通过 HTTP 调用 tee（@ton/core 用于构建 Jetton 交易）
+mcp        →  只通过 HTTP 调用 tee（keypair 本地管理）
+web        →  静态 HTML/JS，部署在 Vercel；无后端依赖
+website    →  web/ 的生产部署根目录（Vercel）
 test       →  可依赖 sdk；通过 HTTP 调用 tee/gateway
 ```
 

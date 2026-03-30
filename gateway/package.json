@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "jest"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
@@ -14,6 +15,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.19.0",
     "typescript": "^5"
   }

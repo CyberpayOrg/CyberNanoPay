@@ -1,5 +1,5 @@
 /**
- * End-to-End Tests — Full CyberNanoPay Lifecycle
+ * End-to-End Tests — Full NanoPay Lifecycle
  *
  * Simulates the complete flow:
  *   1. Deposit USDT → contract
@@ -99,7 +99,7 @@ async function settle(
   );
 }
 
-describe("E2E: Full CyberNanoPay Lifecycle", () => {
+describe("E2E: Full NanoPay Lifecycle", () => {
   let blockchain: Blockchain;
   let owner: SandboxContract<TreasuryContract>;
   let gateway: SandboxContract<CyberGateway>;

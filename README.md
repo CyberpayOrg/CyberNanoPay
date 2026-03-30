@@ -1,4 +1,4 @@
-# CyberNanoPay — Gas-Free Nanopayment Infrastructure for AI Agents on TON
+# NanoPay — Gas-Free Nanopayment Infrastructure for AI Agents on TON
 
 Sub-cent USDT micropayments for AI agents. Zero gas per payment. x402-compatible. TEE-secured. Telegram-native.
 
@@ -14,13 +14,13 @@ AI agents need to pay for API calls, compute, data, and services — often thous
 |---|---|---|
 | Credit Card (Stripe) | $0.30 fixed fee | ❌ 300x the payment |
 | TON on-chain | ~$0.01 gas | ❌ 10x the payment |
-| CyberNanoPay | ~$0.00002 (batched) | ✅ 50x cheaper |
+| NanoPay | ~$0.00002 (batched) | ✅ 50x cheaper |
 
-Traditional payment rails charge $0.30/tx minimum. On-chain transactions cost gas per tx. Neither works for micropayments. CyberNanoPay batches 1000+ payments into 1 on-chain transaction, reducing cost by 99%.
+Traditional payment rails charge $0.30/tx minimum. On-chain transactions cost gas per tx. Neither works for micropayments. NanoPay batches 1000+ payments into 1 on-chain transaction, reducing cost by 99%.
 
 ## The Solution
 
-CyberNanoPay is a nanopayment protocol on TON. Buyers sign Ed25519 authorizations offchain (zero gas), a Phala TEE aggregator verifies and batches them, then periodically settles on-chain.
+NanoPay is a nanopayment protocol on TON. Buyers sign Ed25519 authorizations offchain (zero gas), a Phala TEE aggregator verifies and batches them, then periodically settles on-chain.
 
 ```
 Agent (buyer)
@@ -102,14 +102,14 @@ You: Check my balance
 Agent: [calls nano_balance] Available: 9.999 USDT
 ```
 
-MCP Tools: `nano_deposit`, `nano_pay`, `nano_balance`, `nano_history`, `nano_receipt`, `nano_attestation`, `nano_stats`
+MCP Tools: `nano_deposit`, `nano_pay`, `nano_balance`, `nano_history`, `nano_receipt`, `nano_attestation`, `nano_stats`, `nano_flush`, `nano_withdraw`, `nano_policy_get`, `nano_policy_set`
 
 **Option B: SDK (for programmatic use)**
 
 ```typescript
-import { CyberNanoPayBuyer } from "@cyberpay/nano-sdk";
+import { NanoPayBuyer } from "@cyberpay/nano-sdk";
 
-const buyer = new CyberNanoPayBuyer({
+const buyer = new NanoPayBuyer({
   keypair: myEd25519Keypair,
   address: "EQ...",
   gatewayUrl: "https://3c84244e...-4030.dstack-pha-prod5.phala.network",
@@ -157,7 +157,7 @@ Every payment produces a TEE-signed receipt (buyer and seller both get it):
 
 ```json
 {
-  "version": "CyberNanoPay:receipt:v2",
+  "version": "NanoPay:receipt:v2",
   "protected": {
     "alg": "EdDSA",
     "teePlatform": "phala-tdx",
@@ -179,10 +179,10 @@ Query by role: `GET /receipts/:address?role=from` (buyer) or `role=to` (seller).
 
 ## Works with TON Agentic Wallets
 
-CyberNanoPay complements [TON Agentic Wallets](https://agents.ton.org):
+NanoPay complements [TON Agentic Wallets](https://agents.ton.org):
 
 - **Agentic Wallet** → agent's on-chain wallet (deposit, withdraw, swap)
-- **CyberNanoPay** → agent's offchain payment layer (high-frequency micropayments)
+- **NanoPay** → agent's offchain payment layer (high-frequency micropayments)
 
 ```
 Agent MCP Tools:
@@ -194,7 +194,7 @@ Agent MCP Tools:
 
 ## TEE Trust Model
 
-CyberNanoPay is not just micropayments — it's **verifiable micropayments**. The TEE provides three guarantees that pure on-chain solutions (x402, Superfluid) cannot:
+NanoPay is not just micropayments — it's **verifiable micropayments**. The TEE provides three guarantees that pure on-chain solutions (x402, Superfluid) cannot:
 
 | Property | What it means | Why it matters |
 |----------|--------------|----------------|
@@ -202,7 +202,7 @@ CyberNanoPay is not just micropayments — it's **verifiable micropayments**. Th
 | Tamper-proof computation | Balance deductions cannot be manipulated | No one — not even the operator — can forge or alter payments |
 | Provable output | Every receipt is TEE-signed with attestation | Third parties can independently verify any payment happened |
 
-CyberNanoPay uses Phala Cloud TDX (Intel Trust Domain Extensions) for security:
+NanoPay uses Phala Cloud TDX (Intel Trust Domain Extensions) for security:
 
 | Layer | What it proves |
 |-------|---------------|
@@ -220,12 +220,12 @@ cyber-nano-pay/
 ├── contracts/       # TON smart contract (Tact) — Deposit, BatchSettle, Withdraw, HITL
 ├── tee/             # Phala TEE Aggregator — signature verification, batching, settlement
 ├── sdk/             # Client SDK — buyer, seller, paywall middleware
-├── mcp/             # MCP server — AI agent integration (nano_pay, nano_balance, etc.)
-├── gateway/         # x402 HTTP gateway
+├── mcp/             # MCP server — AI agent integration (nano_pay, nano_balance, nano_flush, etc.)
+├── gateway/         # x402 HTTP gateway (rate-limited)
 ├── telegram/        # HITL approval Telegram bot
-├── miniapp/         # Telegram Mini App
-├── website/         # Project website
-├── mvp/             # Live demo frontend (nano.cyberpay.org)
+├── miniapp/         # Telegram Mini App (backend + frontend)
+├── web/             # Demo frontend + pitch assets (nano.cyberpay.org)
+├── website/         # Production deployment root (Vercel)
 ├── scripts/         # Utility scripts (lint, verify)
 └── test/            # E2E tests
 ```
@@ -239,6 +239,7 @@ cyber-nano-pay/
 | `/verify` | POST | Verify payment + deduct balance |
 | `/balance/:addr` | GET | Check balance (available/settled/unsettled) |
 | `/stats` | GET | Global protocol statistics |
+| `/policy` | POST | Set spending policy (admin) |
 | `/policy/:addr` | GET | Get spending policy |
 | `/receipts/:addr` | GET | Payment receipts (role=from/to/both) |
 | `/receipt/:id` | GET | Single receipt by confirmation ID |
@@ -246,9 +247,12 @@ cyber-nano-pay/
 | `/history/deposits/:addr` | GET | Deposit history |
 | `/flush` | POST | Force batch settlement (admin) |
 | `/flush-for-withdraw` | POST | Merchant-triggered settlement |
+| `/build-withdraw-tx` | POST | Build on-chain withdraw tx payload |
 | `/approvals` | GET | Pending HITL approvals |
-| `/approve/:id` | POST | Approve payment |
-| `/reject/:id` | POST | Reject payment |
+| `/approve/:id` | POST | Approve payment (admin) |
+| `/reject/:id` | POST | Reject payment (admin) |
+| `/simulate-deposit` | POST | Simulate deposit (dev mode only) |
+| `/register-key` | POST | Register Ed25519 pubkey (dev mode only) |
 
 ## Running Locally
 

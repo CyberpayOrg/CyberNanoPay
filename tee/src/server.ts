@@ -1,5 +1,5 @@
 /**
- * CyberNanoPay TEE HTTP Server
+ * NanoPay TEE HTTP Server
  *
  * Exposes the aggregator as an HTTP API for sellers and facilitators.
  * In production, this runs inside a Phala TEE worker.
@@ -41,6 +41,7 @@ const WALLET_MNEMONIC = process.env.WALLET_MNEMONIC ?? "";
 const TELEGRAM_BOT_URL = process.env.TELEGRAM_BOT_URL ?? "";
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
 const TONCENTER_API_KEY = process.env.TONCENTER_API_KEY ?? "";
+const DEV_MODE = process.env.NODE_ENV !== "production";
 
 // ── Helpers ──
 
@@ -60,8 +61,10 @@ async function loadTeeKeypair(): Promise<nacl.SignKeyPair> {
   return kp;
 }
 
-function adminGuard(c: any): Response | null {
-  if (!ADMIN_TOKEN) return null;
+function adminGuard(c: { req: { header(name: string): string | undefined }; json: (data: unknown, status?: number) => Response }): Response | null {
+  if (!ADMIN_TOKEN) {
+    return c.json({ error: "Admin access disabled: ADMIN_TOKEN not configured" }, 403);
+  }
   const auth = c.req.header("Authorization");
   if (!auth || auth !== `Bearer ${ADMIN_TOKEN}`) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -116,9 +119,52 @@ async function notifyTelegramBot(approval: PendingApproval): Promise<void> {
   }
 }
 
+// ── Rate Limiting ──
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX ?? "120");
+
+function rateLimitMiddleware() {
+  return async (c: any, next: any) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+      ?? c.req.header("x-real-ip")
+      ?? "unknown";
+    const now = Date.now();
+    let entry = rateLimitMap.get(ip);
+
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitMap.set(ip, entry);
+    }
+
+    entry.count++;
+
+    if (entry.count > RATE_LIMIT_MAX) {
+      return c.json({ error: "Too many requests" }, 429);
+    }
+
+    await next();
+  };
+}
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now >= entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 300_000);
+
 // ── Main ──
 
 async function main() {
+  // Enforce ADMIN_TOKEN in production
+  if (!DEV_MODE && !ADMIN_TOKEN) {
+    console.error("[fatal] ADMIN_TOKEN is required in production (NODE_ENV=production). Set ADMIN_TOKEN env var.");
+    process.exit(1);
+  }
+
   const teeKeypair = await loadTeeKeypair();
   const teePubkeyHex = Buffer.from(teeKeypair.publicKey).toString("hex");
   console.log(`[tee] Public key: ${teePubkeyHex}`);
@@ -165,6 +211,7 @@ async function main() {
   const app = new Hono();
 
   app.use("*", cors());
+  app.use("*", rateLimitMiddleware());
 
   app.get("/health", (c) => c.json({ status: "ok", tee: attestation.platform }));
 
@@ -173,7 +220,7 @@ async function main() {
     if (denied) return denied;
     const fs = await import("fs");
     const socketPaths = ["/var/run/dstack.sock", "/var/run/tappd.sock"];
-    const checks: Record<string, any> = {
+    const checks: Record<string, unknown> = {
       DSTACK_SIMULATOR_ENDPOINT: process.env.DSTACK_SIMULATOR_ENDPOINT ?? "(not set)",
     };
     for (const p of socketPaths) {
@@ -398,6 +445,7 @@ async function main() {
   // ── Admin endpoints ──
 
   app.post("/register-key", async (c) => {
+    if (!DEV_MODE) return c.json({ error: "register-key is disabled in production — use on-chain RegisterPubkey" }, 403);
     const denied = adminGuard(c);
     if (denied) return denied;
     let body: Record<string, unknown>;
@@ -416,6 +464,7 @@ async function main() {
   });
 
   app.post("/simulate-deposit", async (c) => {
+    if (!DEV_MODE) return c.json({ error: "simulate-deposit is disabled in production — deposits come from on-chain only" }, 403);
     const denied = adminGuard(c);
     if (denied) return denied;
     let body: Record<string, unknown>;
@@ -447,6 +496,70 @@ async function main() {
   });
 
   // ── Flush-for-withdraw ──
+
+  // ── Withdraw: build on-chain transaction payloads ──
+
+  app.post("/build-withdraw-tx", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON body" }, 400);
+    }
+    const addrErr = validateTonAddress(body.address);
+    if (addrErr) return c.json({ error: `'address' ${addrErr}` }, 400);
+
+    let amount: bigint;
+    try {
+      amount = BigInt(body.amount as string);
+    } catch {
+      return c.json({ error: "amount must be a valid integer string" }, 400);
+    }
+    if (amount <= 0n) return c.json({ error: "amount must be > 0" }, 400);
+
+    const address = body.address as string;
+    const balance = aggregator.getBalance(address);
+    if (balance < amount) {
+      return c.json({ error: `Insufficient balance: have ${balance}, requested ${amount}` }, 400);
+    }
+
+    if (!GATEWAY_ADDRESS) {
+      return c.json({ error: "GATEWAY_ADDRESS not configured" }, 501);
+    }
+
+    try {
+      const { beginCell, toNano } = await import("@ton/core");
+
+      // Build InitiateWithdraw message body (Tact opcode: 2265542390)
+      const initiateBody = beginCell()
+        .storeUint(2265542390, 32)  // InitiateWithdraw opcode
+        .storeCoins(amount)
+        .endCell();
+
+      // Build CompleteWithdraw message body (Tact opcode: 1372005859)
+      const completeBody = beginCell()
+        .storeUint(1372005859, 32)  // CompleteWithdraw opcode
+        .endCell();
+
+      return c.json({
+        initiate: {
+          to: GATEWAY_ADDRESS,
+          value: toNano("0.1").toString(),
+          payload: initiateBody.toBoc().toString("base64"),
+        },
+        complete: {
+          to: GATEWAY_ADDRESS,
+          value: toNano("0.1").toString(),
+          payload: completeBody.toBoc().toString("base64"),
+        },
+        note: "Step 1: Send 'initiate' tx. Step 2: Wait for cooldown (default 24h). Step 3: Send 'complete' tx to receive USDT.",
+        balance: balance.toString(),
+        amount: amount.toString(),
+      });
+    } catch (err: any) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
 
   // ── Demo: On-chain deposit (testnet only) ──
   // Sends a real JettonTransferNotification to the CyberGateway contract
@@ -661,6 +774,7 @@ async function main() {
       },
       onBatchSettled: (batchId, count, totalAmount) => {
         console.log(`[listener] Batch #${batchId} confirmed: ${count} transfers, total=${totalAmount}`);
+        aggregator.confirmSettlement(batchId);
       },
     });
 
@@ -681,14 +795,22 @@ async function main() {
   const snapshotTimer = setInterval(() => {
     store.saveLedgerSnapshot(aggregator.serializeLedger());
     if (listener) store.saveListenerCursor(listener.getLastLt());
+
+    // Clean up expired flush-for-withdraw rate limit entries
+    const now = Date.now();
+    const cooldown = 3_600_000;
+    for (const [addr, ts] of lastFlushRequest) {
+      if (now - ts > cooldown) lastFlushRequest.delete(addr);
+    }
   }, SNAPSHOT_INTERVAL);
 
   serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`[cyber-nano-pay-tee] Listening on http://localhost:${info.port}`);
     console.log(`[cyber-nano-pay-tee] TEE pubkey: ${teePubkeyHex}`);
     console.log(`[cyber-nano-pay-tee] Platform: ${attestation.platform} (dev=${attestation.isDevelopment})`);
-    if (!ADMIN_TOKEN) console.log(`[cyber-nano-pay-tee] WARNING: ADMIN_TOKEN not set`);
+    if (!ADMIN_TOKEN) console.log(`[cyber-nano-pay-tee] WARNING: ADMIN_TOKEN not set — admin endpoints locked`);
     if (!GATEWAY_ADDRESS) console.log(`[cyber-nano-pay-tee] WARNING: GATEWAY_ADDRESS not set`);
+    if (DEV_MODE) console.log(`[cyber-nano-pay-tee] DEV MODE: /simulate-deposit and /register-key enabled`);
   });
 
   process.on("SIGINT", () => {

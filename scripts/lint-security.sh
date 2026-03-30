@@ -22,7 +22,7 @@ green() { echo -e "\033[32m$1\033[0m"; }
 echo "[Rule 1] 金额变量不能用 number..."
 
 AMOUNT_VIOLATIONS=$(grep -rn \
-  -E '(amount|balance|totalDeposited|totalSpent|totalAmount|pendingOutgoing|spendingLimit|dailyCap|hitlThreshold)\s*:\s*number' \
+  -E '(amount|balance|totalDeposited|totalSpent|totalAmount|pendingOutgoing|spendingLimit|dailyCap|hitlThreshold|pricePerCall|price|fee|cost)\s*:\s*number' \
   "$ROOT"/tee/src/*.ts \
   "$ROOT"/sdk/src/*.ts \
   "$ROOT"/gateway/src/*.ts \

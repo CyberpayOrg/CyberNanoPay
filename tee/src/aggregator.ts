@@ -1,5 +1,5 @@
 /**
- * TEE Aggregator — the brain of CyberNanoPay
+ * TEE Aggregator — the brain of NanoPay
  *
  * Orchestrates: signature verification → policy check → balance deduction → batching → settlement
  * Now with spending limits, daily caps, and HITL approval flow.
@@ -61,19 +61,25 @@ export class Aggregator {
   private settler: Settler;
   private config: AggregatorConfig;
   private flushTimer?: ReturnType<typeof setInterval>;
+  private nonceTimer?: ReturnType<typeof setInterval>;
+  private invariantTimer?: ReturnType<typeof setInterval>;
 
   /** HITL: pending approvals waiting for human decision */
   private pendingApprovals = new Map<string, PendingApproval>();
   private approvalTimeout: number;
 
-  /** Receipt store: confirmationId → receipt */
+  /** Receipt store: confirmationId → receipt (LRU-bounded) */
   private receipts = new Map<string, StandardReceipt>();
+  private static readonly MAX_RECEIPTS = 100_000;
   /** Unsettled receipts waiting for Merkle proof attachment */
   private unsettledReceipts: StandardReceipt[] = [];
   private receiptBuilder: ReceiptBuilder;
 
   /** Failed batches waiting for retry */
   private failedBatches: Array<{ batch: SettlementBatch; attempts: number; nextRetryAt: number }> = [];
+
+  /** Batches submitted on-chain but not yet confirmed by listener */
+  private pendingSettlements = new Map<string, SettlementBatch>();
 
   constructor(config: AggregatorConfig) {
     this.config = config;
@@ -87,10 +93,27 @@ export class Aggregator {
     });
   }
 
-  /** Start the auto-flush check timer. */
+  /** Start the auto-flush check timer and nonce pruning timer. */
   start(): void {
     const interval = this.config.flushCheckIntervalMs ?? 30_000; // check every 30s
     this.flushTimer = setInterval(() => this.tryFlush(), interval);
+
+    // Prune expired nonces every 5 minutes
+    this.nonceTimer = setInterval(() => {
+      const pruned = this.ledger.pruneNonces();
+      if (pruned > 0) {
+        console.log(`[aggregator] Pruned ${pruned} expired nonces (remaining: ${this.ledger.nonceCount})`);
+      }
+    }, 5 * 60_000);
+
+    // Ledger invariant audit every 10 minutes
+    this.invariantTimer = setInterval(() => {
+      const violation = this.ledger.checkInvariant();
+      if (violation) {
+        console.error(`[CRITICAL] ${violation}`);
+      }
+    }, 10 * 60_000);
+
     console.log(
       `[aggregator] Started — flush check every ${interval}ms, ` +
       `maxPending=${this.config.batchMaxPending ?? 5000}, ` +
@@ -102,6 +125,14 @@ export class Aggregator {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
+    }
+    if (this.nonceTimer) {
+      clearInterval(this.nonceTimer);
+      this.nonceTimer = undefined;
+    }
+    if (this.invariantTimer) {
+      clearInterval(this.invariantTimer);
+      this.invariantTimer = undefined;
     }
   }
 
@@ -162,7 +193,7 @@ export class Aggregator {
     }
 
     // 4. Check balance, policy, and deduct atomically
-    const result = this.ledger.tryDeduct(auth.from, auth.amount, auth.nonce);
+    const result = this.ledger.tryDeduct(auth.from, auth.amount, auth.nonce, auth.validBefore);
 
     if (!result.ok) {
       // HITL: payment needs human approval
@@ -219,6 +250,7 @@ export class Aggregator {
     });
 
     this.receipts.set(confirmationId, receipt);
+    this._evictOldReceipts();
     this.unsettledReceipts.push(receipt);
 
     console.log(
@@ -261,7 +293,7 @@ export class Aggregator {
     }
 
     // Force deduct bypassing policy (nonce was not consumed in the initial tryDeduct)
-    const deductResult = this.ledger.forceDeduct(auth.from, auth.amount, auth.nonce);
+    const deductResult = this.ledger.forceDeduct(auth.from, auth.amount, auth.nonce, auth.validBefore);
     if (!deductResult.ok) {
       pending.status = "rejected";
       this.pendingApprovals.delete(paymentId);
@@ -345,11 +377,10 @@ export class Aggregator {
 
     try {
       const txRef = await this.settler.settle(batch);
-      console.log(`[aggregator] Batch #${batch.batchId} settled: ${txRef}`);
+      console.log(`[aggregator] Batch #${batch.batchId} submitted: ${txRef} (awaiting on-chain confirmation)`);
 
-      for (const pos of batch.positions) {
-        this.ledger.creditSettlement(pos.to, pos.amount);
-      }
+      // Track as pending — creditSettlement deferred until listener confirms
+      this.pendingSettlements.set(batch.batchId.toString(), batch);
       this._attachMerkleProofs(batch.batchId);
       return true;
     } catch (err) {
@@ -383,11 +414,9 @@ export class Aggregator {
 
       try {
         const txRef = await this.settler.settle(entry.batch);
-        console.log(`[aggregator] Batch #${entry.batch.batchId} retry succeeded: ${txRef}`);
+        console.log(`[aggregator] Batch #${entry.batch.batchId} retry succeeded: ${txRef} (awaiting confirmation)`);
 
-        for (const pos of entry.batch.positions) {
-          this.ledger.creditSettlement(pos.to, pos.amount);
-        }
+        this.pendingSettlements.set(entry.batch.batchId.toString(), entry.batch);
         this._attachMerkleProofs(entry.batch.batchId);
       } catch (err) {
         entry.attempts++;
@@ -438,6 +467,47 @@ export class Aggregator {
       `[aggregator] Attached Merkle proofs to ${updated.length} receipts, ` +
       `batch #${batchId}, root=${updated[0]?.payload.merkleProof?.root ?? "n/a"}`
     );
+  }
+
+  /** Evict oldest receipts when exceeding LRU cap */
+  private _evictOldReceipts(): void {
+    if (this.receipts.size <= Aggregator.MAX_RECEIPTS) return;
+    const toRemove = this.receipts.size - Aggregator.MAX_RECEIPTS;
+    const iter = this.receipts.keys();
+    for (let i = 0; i < toRemove; i++) {
+      const key = iter.next().value;
+      if (key !== undefined) this.receipts.delete(key);
+    }
+  }
+
+  // ── On-chain confirmation ──
+
+  /**
+   * Called by ChainListener when a BatchSettleEvent is confirmed on-chain.
+   * Credits settlement to receivers only after on-chain confirmation.
+   */
+  confirmSettlement(batchId: bigint): boolean {
+    const key = batchId.toString();
+    const batch = this.pendingSettlements.get(key);
+    if (!batch) {
+      console.log(`[aggregator] Settlement confirmation for unknown batch #${batchId} (may be from before restart)`);
+      return false;
+    }
+
+    for (const pos of batch.positions) {
+      this.ledger.creditSettlement(pos.from, pos.to, pos.amount);
+    }
+    this.pendingSettlements.delete(key);
+    console.log(
+      `[aggregator] Batch #${batchId} confirmed on-chain: ` +
+      `${batch.positions.length} positions credited`
+    );
+    return true;
+  }
+
+  /** Get count of pending (unconfirmed) settlements */
+  get pendingSettlementCount(): number {
+    return this.pendingSettlements.size;
   }
 
   // ── Queries ──

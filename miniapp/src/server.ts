@@ -1,36 +1,45 @@
 /**
- * CyberNanoPay Mini App — Backend Server
+ * NanoPay Mini App — Backend Server
  *
  * Serves the Telegram Mini App frontend and proxies API calls to TEE.
  * Validates Telegram WebApp initData for authentication.
  *
  * Endpoints:
- *   GET  /                    — Serve Mini App HTML
- *   GET  /api/account         — Get balance, policy, daily spent
- *   GET  /api/history         — Payment history
- *   GET  /api/approvals       — Pending HITL approvals
- *   POST /api/topup           — Simulate deposit (dev) / trigger real deposit
- *   POST /api/policy          — Update spending policy
- *   POST /api/approve/:id     — Approve pending payment
- *   POST /api/reject/:id      — Reject pending payment
+ *   GET  /                         — Serve Mini App HTML
+ *   GET  /api/account              — Get balance, policy, daily spent
+ *   GET  /api/history              — Payment history
+ *   GET  /api/approvals            — Pending HITL approvals
+ *   POST /api/topup                — Simulate deposit (dev)
+ *   POST /api/build-deposit-tx     — Build on-chain Jetton transfer payload for TonConnect
+ *   POST /api/register-key         — Register agent Ed25519 public key
+ *   POST /api/policy               — Update spending policy
+ *   POST /api/approve/:id          — Approve pending payment
+ *   POST /api/reject/:id           — Reject pending payment
+ *   GET  /api/mcp-config           — Get MCP config JSON for this address
  */
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import crypto from "crypto";
+import { beginCell, Address, toNano } from "@ton/core";
+import { TonClient } from "@ton/ton";
 import "dotenv/config";
 
 const PORT = parseInt(process.env.PORT ?? "4033");
 const TEE_URL = process.env.TEE_URL ?? "http://localhost:4030";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const GATEWAY_ADDRESS = process.env.GATEWAY_ADDRESS ?? "";
+const JETTON_MASTER = process.env.JETTON_MASTER ?? "";
+const TON_RPC = process.env.TON_RPC ?? "https://toncenter.com/api/v2/jsonRPC";
+const TONCENTER_API_KEY = process.env.TONCENTER_API_KEY ?? "";
 
 type Variables = {
   address: string;
   initData: string;
 };
 
-const app = new Hono<{ Variables: Variables }>();
+export const app = new Hono<{ Variables: Variables }>();
 
 // ── Telegram WebApp Auth ──
 
@@ -227,8 +236,107 @@ app.get("/api/stats", async (c) => {
   }
 });
 
+/**
+ * Build Jetton transfer transaction payload for TonConnect.
+ * Returns { to, value, payload } for TonConnect sendTransaction.
+ *
+ * The user signs+sends this via TonConnect; their Jetton wallet
+ * forwards USDT to CyberGateway for on-chain deposit.
+ */
+app.post("/api/build-deposit-tx", authMiddleware, async (c) => {
+  if (!GATEWAY_ADDRESS || !JETTON_MASTER) {
+    return c.json({ error: "On-chain deposit not configured (no GATEWAY_ADDRESS or JETTON_MASTER)" }, 501);
+  }
+
+  const body = await c.req.json<{ amount: string }>();
+  const address = c.get("address");
+
+  let userJettonWallet: string;
+  try {
+    const client = new TonClient({
+      endpoint: TON_RPC,
+      apiKey: TONCENTER_API_KEY || undefined,
+    });
+    const master = Address.parse(JETTON_MASTER);
+    const userAddr = Address.parse(address);
+    const result = await client.runMethod(master, "get_wallet_address", [
+      { type: "slice", cell: beginCell().storeAddress(userAddr).endCell() },
+    ]);
+    userJettonWallet = result.stack.readAddress().toString();
+  } catch (err) {
+    return c.json({ error: `Failed to resolve Jetton wallet: ${err}` }, 502);
+  }
+
+  // Build Jetton transfer cell: transfer USDT to CyberGateway
+  const transferBody = beginCell()
+    .storeUint(0x0f8a7ea5, 32)           // op: jetton transfer
+    .storeUint(0, 64)                     // query_id
+    .storeCoins(BigInt(body.amount))      // amount (6 decimals)
+    .storeAddress(Address.parse(GATEWAY_ADDRESS))  // destination
+    .storeAddress(Address.parse(address))           // response_destination
+    .storeBit(0)                          // no custom_payload
+    .storeCoins(toNano("0.01"))           // forward_ton_amount
+    .storeBit(0)                          // forward_payload inline
+    .endCell();
+
+  return c.json({
+    to: userJettonWallet,
+    value: toNano("0.15").toString(),      // TON for gas
+    payload: transferBody.toBoc().toString("base64"),
+  });
+});
+
+/**
+ * Register an agent's Ed25519 public key.
+ * Maps address → pubkey so TEE can verify the agent's payment signatures.
+ */
+app.post("/api/register-key", authMiddleware, async (c) => {
+  const body = await c.req.json<{ publicKey: string }>();
+  const address = c.get("address");
+
+  if (!body.publicKey || !/^[0-9a-fA-F]{64}$/.test(body.publicKey)) {
+    return c.json({ error: "publicKey must be 64 hex chars (Ed25519 public key)" }, 400);
+  }
+
+  try {
+    const res = await fetch(`${TEE_URL}/register-key`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, publicKey: body.publicKey }),
+    });
+    return c.json(await res.json());
+  } catch {
+    return c.json({ error: "TEE unavailable" }, 502);
+  }
+});
+
+/**
+ * Return an MCP config JSON snippet for connecting an AI agent.
+ * Includes the agent's pre-configured TEE URL.
+ */
+app.get("/api/mcp-config", authMiddleware, async (c) => {
+  return c.json({
+    mcpServers: {
+      ton: {
+        command: "npx",
+        args: ["-y", "@ton/mcp@alpha"],
+      },
+      "nano-pay": {
+        command: "npx",
+        args: ["@cyberpay/nano-mcp"],
+        env: {
+          NANO_TEE_URL: TEE_URL,
+        },
+      },
+    },
+  });
+});
+
 // ── Serve static frontend ──
 app.use("/assets/*", serveStatic({ root: "./public" }));
+
+// TonConnect manifest (must be publicly accessible)
+app.get("/tonconnect-manifest.json", serveStatic({ root: "./public", path: "/tonconnect-manifest.json" }));
 
 // Serve main HTML for all non-API routes (SPA)
 app.get("/*", async (c) => {
@@ -240,8 +348,10 @@ app.get("/*", async (c) => {
   return c.html(html);
 });
 
-// ── Start ──
+// ── Start (only when run directly) ──
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`[cyber-nano-pay-miniapp] http://localhost:${info.port}`);
-});
+if (require.main === module) {
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
+    console.log(`[cyber-nano-pay-miniapp] http://localhost:${info.port}`);
+  });
+}
